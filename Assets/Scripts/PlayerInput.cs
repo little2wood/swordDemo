@@ -13,15 +13,6 @@ public class PlayerInput : MonoBehaviour
     /// <summary>本帧是否按下了鼠标左键（攻击请求）。</summary>
     public bool AttackPressed { get; private set; }
 
-    /// <summary>本帧鼠标 X 增量（像素）。仅光标锁定时有效，Esc 解锁后归零防乱转。</summary>
-    public float MouseDeltaX { get; private set; }
-
-    /// <summary>光标当前是否锁定（编辑器按 Esc 可解除）。</summary>
-    public bool CursorLocked
-    {
-        get { return Cursor.lockState == CursorLockMode.Locked; }
-    }
-
     void Start()
     {
         LockCursor();
@@ -50,9 +41,6 @@ public class PlayerInput : MonoBehaviour
 
         // 鼠标左键：按下瞬间
         AttackPressed = mouse != null && mouse.leftButton.wasPressedThisFrame;
-
-        // 鼠标 X 增量：仅锁定状态下采集
-        MouseDeltaX = (mouse != null && CursorLocked) ? mouse.delta.ReadValue().x : 0f;
     }
 
     /// <summary>锁定光标到屏幕中心并隐藏（第三人称操作的标准做法）。</summary>

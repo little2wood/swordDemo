@@ -13,8 +13,8 @@ public class PlayerController : MonoBehaviour
     public float moveSpeed = 6f;        // m/s
 
     [Header("朝向")]
-    public float turnSpeed = 540f;      // deg/s，朝向追赶相机 yaw 的角速度
-    public float facingOffset = 180f;   // 模型自带朝向偏移（FBX 面朝 -Z）；联调发现反了就改 0
+    public float turnSpeed = 540f;      // deg/s，朝向转向移动方向的角速度
+    public float facingOffset = 0f;     // 模型自带朝向偏移：实测模型正面朝 +Z 故为 0；若角色背对移动方向改成 180
 
     Rigidbody rb;
     Animator anim;

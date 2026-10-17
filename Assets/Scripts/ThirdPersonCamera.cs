@@ -10,7 +10,7 @@ public class ThirdPersonCamera : MonoBehaviour
     public float distance = 4.5f;       // 与主角的水平距离
     public float height = 2.2f;         // 相机高度
     public float lookHeight = 1.4f;     // 注视点高度（胸口）
-    public float facingOffset = 180f;   // 模型自带朝向偏移，与 PlayerController 一致
+    public float facingOffset = 0f;     // 模型自带朝向偏移：实测模型正面朝 +Z 故为 0，需与 PlayerController 一致
 
     Vector3 offset;
 
