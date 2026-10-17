@@ -36,3 +36,8 @@ crashlytics-build.properties
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# ================= 项目自定义 =================
+# 截图输出目录（MCP 调试截图，不入库）
+Assets/Screenshots/
+Assets/Screenshots.meta
