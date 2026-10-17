@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// 角色控制器：物理驱动移动（WASD 按固定屏幕方向）+ 朝向平滑对齐移动方向 + 攻击输入按状态过滤。
+/// 角色控制器：物理驱动移动（WASD 按固定屏幕方向）+ 朝向平滑对齐移动方向 + 攻击仅在站立时可起手/续击。
 /// 相机为固定偏移跟随（不旋转），动画只负责表演，位移完全由 Rigidbody 决定。
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
@@ -25,7 +25,6 @@ public class PlayerController : MonoBehaviour
     static readonly int MovingId = Animator.StringToHash("Moving");
     static readonly int AttackId = Animator.StringToHash("Attack");
     static readonly int IdleH = Animator.StringToHash("Idle");
-    static readonly int JogH = Animator.StringToHash("Jog");
     static readonly int AH = Animator.StringToHash("A");
     static readonly int ARecH = Animator.StringToHash("A_Rec");
     static readonly int BH = Animator.StringToHash("B");
@@ -78,10 +77,17 @@ public class PlayerController : MonoBehaviour
         // ---- 动画参数 ----
         anim.SetBool(MovingId, hasMove);
 
-        // ---- 攻击输入：按状态过滤（A/B/C 挥砍中直接忽略，不缓存）----
-        if (input.AttackPressed && CanStartAttack())
+        // ---- 攻击输入：只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
+        if (input.AttackPressed)
         {
-            anim.SetTrigger(AttackId);
+            if (CanStartAttack(hasMove))
+            {
+                anim.SetTrigger(AttackId);
+            }
+            else
+            {
+                anim.ResetTrigger(AttackId);    // 清掉残留的 pending trigger，避免停下后自动补一刀
+            }
         }
     }
 
@@ -92,11 +98,12 @@ public class PlayerController : MonoBehaviour
         return h == AH || h == BH || h == CH;
     }
 
-    /// 是否可起手/续击（Idle/Jog 起手，A_Rec/B_Rec 连击窗口）
-    bool CanStartAttack()
+    /// 是否可起手/续击：必须站立（Idle 起手，A_Rec/B_Rec 连击窗口），移动中一律不响应
+    bool CanStartAttack(bool hasMove)
     {
+        if (hasMove) return false;
         int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
-        return h == IdleH || h == JogH || h == ARecH || h == BRecH;
+        return h == IdleH || h == ARecH || h == BRecH;
     }
 
     static Vector3 Flat(Vector3 v)
