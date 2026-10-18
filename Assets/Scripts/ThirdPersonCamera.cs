@@ -25,8 +25,17 @@ public class ThirdPersonCamera : MonoBehaviour
     public bool invertX = false;        // 水平方向取反
     public bool invertY = false;        // 垂直方向取反
 
+    [Header("避障")]
+    public LayerMask collisionLayers = ~0;  // 参与遮挡检测的层（默认全部）
+    public float cameraRadius = 0.25f;      // 相机碰撞半径（约等于近裁剪面，避免边缘穿模）
+    public float minDistance = 0.6f;        // 被遮挡时最近可拉到多近
+    public float restoreSpeed = 4f;         // 遮挡消失后推远的速度（m/s）
+
     PlayerInput input;
     float yaw;
+    float currentDistance;              // 当前"注视点 → 相机"的实际距离（沿 dir）
+    bool distanceReady;
+    RaycastHit[] hits = new RaycastHit[8];
 
     void Start()
     {
@@ -56,15 +65,39 @@ public class ThirdPersonCamera : MonoBehaviour
         Apply();
     }
 
-    /// 把 (yaw, pitch) 换算成球面上的位置并摆放相机
+    /// 把 (yaw, pitch) 换算成球面上的位置并摆放相机（含避障）
     void Apply()
     {
         Vector3 pivot = target.position + Vector3.up * waistHeight;   // 球心（腰部）
+        Vector3 look = target.position + Vector3.up * lookHeight;     // 注视点（胸口）
 
         // pitch 绕 X 轴抬起，yaw 绕 Y 轴环绕；back 为"从球心指向相机"的方向
         Vector3 dir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.back;
 
-        transform.position = pivot + dir * distance;
-        transform.LookAt(target.position + Vector3.up * lookHeight);
+        // 无遮挡时的理想距离：注视点 → 球面位置
+        float desiredDist = Vector3.Distance(look, pivot + dir * distance);
+
+        // ---- 避障：从注视点朝相机方向做球体投射 ----
+        float allowed = desiredDist;
+        int n = Physics.SphereCastNonAlloc(look, cameraRadius, dir, hits, desiredDist, collisionLayers);
+        float nearest = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            Transform ht = hits[i].transform;
+            if (ht == target || ht.IsChildOf(target)) continue;   // 忽略角色自身
+            if (hits[i].distance < nearest) nearest = hits[i].distance;
+        }
+        if (nearest < float.MaxValue)
+        {
+            allowed = Mathf.Max(minDistance, nearest - cameraRadius);
+        }
+
+        // 拉近立即（防穿墙），推远渐进（防抖动）
+        if (!distanceReady) { currentDistance = allowed; distanceReady = true; }
+        else if (allowed < currentDistance) currentDistance = allowed;
+        else currentDistance = Mathf.MoveTowards(currentDistance, allowed, restoreSpeed * Time.deltaTime);
+
+        transform.position = look + dir * currentDistance;
+        transform.LookAt(look);
     }
 }
