@@ -16,7 +16,20 @@ public class EnemyRagdoll : MonoBehaviour
     public float deathImpulse = 10f;      // 水平方向速度改变量 m/s
     public float upwardBias = 0.7f;       // 向上分量（相对水平速度的比例）
     public float randomTorque = 9f;       // 随机角速度，让翻滚更夸张
-    public float deathDrag = 0.6f;        // 布娃娃阻尼，避免滑太久
+    public float deathDrag = 1.0f;        // 布娃娃阻尼，避免滑太久
+    public float deathSleepThreshold = 0.08f;   // 提高休眠阈值，让静止更快到来
+
+    [Header("稳定性")]
+    public int ragdollLayer = 9;                // 布娃娃专用层（该层内部互不碰撞）
+    public bool ignoreSelfCollision = true;     // 关掉肢体互撞 → 消除抽搐的主因
+    public bool freezeOnSettle = true;          // 静止后冻结，彻底不再抖
+    public float settleDelay = 4.0f;            // 多少秒后开始强制减速
+    public float freezeDelay = 5.5f;            // 多少秒后完全冻结（kinematic）
+    public float settleDamping = 12f;           // 减速阶段的阻尼
+
+    float activateTime;
+    bool dampingRaised;
+    bool frozen;
 
     Animator anim;
     Rigidbody rootBody;
@@ -36,24 +49,25 @@ public class EnemyRagdoll : MonoBehaviour
 
     static readonly BoneSpec[] Specs = new BoneSpec[]
     {
-        new BoneSpec("pelvis",   "spine_01",  12f, 0.14f),
-        new BoneSpec("spine_01", "spine_02",  10f, 0.15f),
-        new BoneSpec("spine_02", "spine_03",  10f, 0.16f),
-        new BoneSpec("spine_03", "neck_01",    8f, 0.14f),
-        new BoneSpec("neck_01",  "Head",       3f, 0.08f),
-        new BoneSpec("Head",     "",           4f, 0.13f),
-        new BoneSpec("thigh_l",  "calf_l",     6f, 0.12f),
-        new BoneSpec("calf_l",   "foot_l",     4f, 0.10f),
-        new BoneSpec("foot_l",   "ball_l",     2f, 0.08f),
-        new BoneSpec("thigh_r",  "calf_r",     6f, 0.12f),
-        new BoneSpec("calf_r",   "foot_r",     4f, 0.10f),
-        new BoneSpec("foot_r",   "ball_r",     2f, 0.08f),
-        new BoneSpec("upperarm_l","lowerarm_l",3f, 0.09f),
-        new BoneSpec("lowerarm_l","hand_l",    2f, 0.08f),
-        new BoneSpec("hand_l",   "",           1f, 0.07f),
-        new BoneSpec("upperarm_r","lowerarm_r",3f, 0.09f),
-        new BoneSpec("lowerarm_r","hand_r",    2f, 0.08f),
-        new BoneSpec("hand_r",   "",           1f, 0.07f)
+        // 质量比尽量控制在 3:1 以内（悬殊的质量比会让关节解算器发抖）
+        new BoneSpec("pelvis",   "spine_01",  10f, 0.13f),
+        new BoneSpec("spine_01", "spine_02",   8f, 0.14f),
+        new BoneSpec("spine_02", "spine_03",   8f, 0.15f),
+        new BoneSpec("spine_03", "neck_01",    7f, 0.13f),
+        new BoneSpec("neck_01",  "Head",       2f, 0.07f),
+        new BoneSpec("Head",     "",           3f, 0.12f),
+        new BoneSpec("thigh_l",  "calf_l",     5f, 0.11f),
+        new BoneSpec("calf_l",   "foot_l",     3.5f, 0.09f),
+        new BoneSpec("foot_l",   "ball_l",     1.5f, 0.07f),
+        new BoneSpec("thigh_r",  "calf_r",     5f, 0.11f),
+        new BoneSpec("calf_r",   "foot_r",     3.5f, 0.09f),
+        new BoneSpec("foot_r",   "ball_r",     1.5f, 0.07f),
+        new BoneSpec("upperarm_l","lowerarm_l",2.5f, 0.08f),
+        new BoneSpec("lowerarm_l","hand_l",    1.8f, 0.07f),
+        new BoneSpec("hand_l",   "",           1.2f, 0.06f),
+        new BoneSpec("upperarm_r","lowerarm_r",2.5f, 0.08f),
+        new BoneSpec("lowerarm_r","hand_r",    1.8f, 0.07f),
+        new BoneSpec("hand_r",   "",           1.2f, 0.06f)
     };
 
     // 父骨骼映射：谁连谁
@@ -89,6 +103,40 @@ public class EnemyRagdoll : MonoBehaviour
         aiScript = GetComponent<EnemyAI>();
         health = GetComponent<Health>();
         SetPartsKinematic(true);
+
+        // 布娃娃层内部互不碰撞：肢体胶囊在骨盆/胸部附近必然重叠，
+        // 若互相碰撞，解算器会不停把它们推开 —— 这是"地上一直抽搐"的主因
+        if (ignoreSelfCollision) Physics.IgnoreLayerCollision(ragdollLayer, ragdollLayer, true);
+    }
+
+    void Update()
+    {
+        if (!active || !freezeOnSettle || frozen) return;
+
+        float t = Time.time - activateTime;
+
+        if (!dampingRaised && t >= settleDelay)
+        {
+            dampingRaised = true;
+            foreach (var p in parts)
+            {
+                if (p == null) continue;
+                p.linearDamping = settleDamping;
+                p.angularDamping = settleDamping;
+            }
+        }
+
+        if (t >= freezeDelay)
+        {
+            frozen = true;
+            foreach (var p in parts)
+            {
+                if (p == null) continue;
+                p.linearVelocity = Vector3.zero;
+                p.angularVelocity = Vector3.zero;
+                p.isKinematic = true;   // 冻结：彻底静止，也省 CPU
+            }
+        }
     }
 
     void OnEnable()
@@ -107,6 +155,7 @@ public class EnemyRagdoll : MonoBehaviour
     {
         if (active) return;
         active = true;
+        activateTime = Time.time;
 
         // 1. 关掉动画与 AI，保留最后一帧姿势
         if (aiScript != null) aiScript.enabled = false;
@@ -174,6 +223,7 @@ public class EnemyRagdoll : MonoBehaviour
             {
                 p.linearDamping = deathDrag;
                 p.angularDamping = deathDrag;
+                p.sleepThreshold = deathSleepThreshold;
                 p.WakeUp();
             }
         }
@@ -204,6 +254,7 @@ public class EnemyRagdoll : MonoBehaviour
             rb.isKinematic = true;
             rb.detectCollisions = false;
             rb.useGravity = true;
+            bone.gameObject.layer = ragdollLayer;   // 归入布娃娃层（层内互不碰撞）
 
             var col = bone.GetComponent<CapsuleCollider>();
             if (col == null) col = bone.gameObject.AddComponent<CapsuleCollider>();

@@ -341,8 +341,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.12
-  m_Height: 0.5875857
+  m_Radius: 0.11
+  m_Height: 0.5675857
   m_Direction: 1
   m_Center: {x: 0, y: 0.17379285, z: 0}
 --- !u!54 &238218011
@@ -353,7 +353,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 238218007}
   serializedVersion: 5
-  m_Mass: 6
+  m_Mass: 5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -478,8 +478,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.08
-  m_Height: 0.29546124
+  m_Radius: 0.07
+  m_Height: 0.27546126
   m_Direction: 1
   m_Center: {x: 0, y: 0.06773063, z: 0}
 --- !u!54 &279952636
@@ -490,7 +490,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 279952632}
   serializedVersion: 5
-  m_Mass: 2
+  m_Mass: 1.5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -1051,6 +1051,13 @@ MonoBehaviour:
   upwardBias: 0.7
   randomTorque: 9
   deathDrag: 0.6
+  deathSleepThreshold: 0.08
+  ragdollLayer: 9
+  ignoreSelfCollision: 1
+  freezeOnSettle: 1
+  settleDelay: 4
+  freezeDelay: 5.5
+  settleDamping: 12
 --- !u!114 &469687794
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1269,8 +1276,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.09
-  m_Height: 0.41964638
+  m_Radius: 0.08
+  m_Height: 0.3996464
   m_Direction: 1
   m_Center: {x: 0, y: 0.119823195, z: 0}
 --- !u!54 &570715549
@@ -1281,7 +1288,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 570715545}
   serializedVersion: 5
-  m_Mass: 3
+  m_Mass: 2.5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -1527,8 +1534,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.08
-  m_Height: 0.22823411
+  m_Radius: 0.07
+  m_Height: 0.20823413
   m_Direction: 1
   m_Center: {x: 0, y: 0.03411706, z: 0}
 --- !u!54 &638357137
@@ -1539,7 +1546,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 638357133}
   serializedVersion: 5
-  m_Mass: 3
+  m_Mass: 2
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -1582,8 +1589,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.14
-  m_Height: 0.38952476
+  m_Radius: 0.13
+  m_Height: 0.36952475
   m_Direction: 1
   m_Center: {x: 0, y: 0.054762375, z: 0}
 --- !u!54 &642556237
@@ -1594,7 +1601,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 642556234}
   serializedVersion: 5
-  m_Mass: 12
+  m_Mass: 10
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -1631,6 +1638,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -8819792451641598848, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_LocalScale.x
       value: 1.4
@@ -1683,6 +1694,18 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -8310842784339754763, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -7319870295290025623, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -6833479802906322428, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: -6566477233783934507, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_LocalRotation.w
       value: -0.08158663
@@ -1699,9 +1722,57 @@ PrefabInstance:
       propertyPath: m_LocalRotation.z
       value: 0.1683343
       objectReference: {fileID: 0}
+    - target: {fileID: -5912894932395400830, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -5375008215205933317, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -4439164827220960983, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -4316852474689530018, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -3992794365973481968, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -3809142242850569558, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -2705747618927858950, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: -746180107511235695, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 130342650481765802, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_Name
       value: Enemy_Imp
+      objectReference: {fileID: 0}
+    - target: {fileID: 1874435250367549929, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 1987692631272191716, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 3106076137901352428, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
       objectReference: {fileID: 0}
     - target: {fileID: 4730023949574283774, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_LocalRotation.w
@@ -1731,6 +1802,10 @@ PrefabInstance:
       propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 7786266996968442062, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
+      objectReference: {fileID: 0}
     - target: {fileID: 7999057481438587373, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_LocalRotation.w
       value: 0.602531
@@ -1746,6 +1821,10 @@ PrefabInstance:
     - target: {fileID: 7999057481438587373, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_LocalRotation.z
       value: -0.0071316063
+      objectReference: {fileID: 0}
+    - target: {fileID: 8302991255347281649, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_Layer
+      value: 9
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -2232,8 +2311,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.13
-  m_Height: 0.38
+  m_Radius: 0.12
+  m_Height: 0.35999998
   m_Direction: 1
   m_Center: {x: 0, y: 0.06, z: 0}
 --- !u!54 &950409925
@@ -2244,7 +2323,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 950409921}
   serializedVersion: 5
-  m_Mass: 4
+  m_Mass: 3
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -2333,8 +2412,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.08
-  m_Height: 0.29546127
+  m_Radius: 0.07
+  m_Height: 0.27546126
   m_Direction: 1
   m_Center: {x: 0, y: 0.067730635, z: 0}
 --- !u!54 &977841456
@@ -2345,7 +2424,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 977841452}
   serializedVersion: 5
-  m_Mass: 2
+  m_Mass: 1.5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -2434,8 +2513,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.07
-  m_Height: 0.26
+  m_Radius: 0.06
+  m_Height: 0.24
   m_Direction: 1
   m_Center: {x: 0, y: 0.06, z: 0}
 --- !u!54 &983738231
@@ -2446,7 +2525,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 983738227}
   serializedVersion: 5
-  m_Mass: 1
+  m_Mass: 1.2
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -2488,7 +2567,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1033393848}
   serializedVersion: 5
-  m_Mass: 1
+  m_Mass: 1.2
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -2572,8 +2651,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.07
-  m_Height: 0.26
+  m_Radius: 0.06
+  m_Height: 0.24
   m_Direction: 1
   m_Center: {x: 0, y: 0.06, z: 0}
 --- !u!1 &1042165787
@@ -3826,8 +3905,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.08
-  m_Height: 0.37976882
+  m_Radius: 0.07
+  m_Height: 0.3597688
   m_Direction: 1
   m_Center: {x: 0, y: 0.10988441, z: 0}
 --- !u!54 &1154179075
@@ -3838,7 +3917,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1154179071}
   serializedVersion: 5
-  m_Mass: 2
+  m_Mass: 1.8
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -3932,8 +4011,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.09
-  m_Height: 0.41964662
+  m_Radius: 0.08
+  m_Height: 0.39964664
   m_Direction: 1
   m_Center: {x: 0, y: 0.119823314, z: 0}
 --- !u!54 &1175701268
@@ -3944,7 +4023,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1175701264}
   serializedVersion: 5
-  m_Mass: 3
+  m_Mass: 2.5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -4038,8 +4117,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.12
-  m_Height: 0.5875857
+  m_Radius: 0.11
+  m_Height: 0.5675857
   m_Direction: 1
   m_Center: {x: 0, y: 0.17379285, z: 0}
 --- !u!54 &1196993881
@@ -4050,7 +4129,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1196993877}
   serializedVersion: 5
-  m_Mass: 6
+  m_Mass: 5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -4144,8 +4223,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.08
-  m_Height: 0.37976882
+  m_Radius: 0.07
+  m_Height: 0.3597688
   m_Direction: 1
   m_Center: {x: 0, y: 0.10988441, z: 0}
 --- !u!54 &1232814761
@@ -4156,7 +4235,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1232814757}
   serializedVersion: 5
-  m_Mass: 2
+  m_Mass: 1.8
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -4995,8 +5074,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.1
-  m_Height: 0.6108578
+  m_Radius: 0.09
+  m_Height: 0.59085774
   m_Direction: 1
   m_Center: {x: 0, y: 0.20542888, z: 0}
 --- !u!54 &1579913176
@@ -5007,7 +5086,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1579913172}
   serializedVersion: 5
-  m_Mass: 4
+  m_Mass: 3.5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -5360,8 +5439,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.15
-  m_Height: 0.3891508
+  m_Radius: 0.14
+  m_Height: 0.36915076
   m_Direction: 1
   m_Center: {x: 0, y: 0.044575386, z: 0}
 --- !u!54 &1693852611
@@ -5372,7 +5451,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1693852607}
   serializedVersion: 5
-  m_Mass: 10
+  m_Mass: 8
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -5466,8 +5545,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.16
-  m_Height: 0.42722473
+  m_Radius: 0.15
+  m_Height: 0.40722474
   m_Direction: 1
   m_Center: {x: 0, y: 0.053612363, z: 0}
 --- !u!54 &1821269249
@@ -5478,7 +5557,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1821269245}
   serializedVersion: 5
-  m_Mass: 10
+  m_Mass: 8
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -5942,8 +6021,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.1
-  m_Height: 0.61085784
+  m_Radius: 0.09
+  m_Height: 0.59085786
   m_Direction: 1
   m_Center: {x: 0, y: 0.20542893, z: 0}
 --- !u!54 &2102602375
@@ -5954,7 +6033,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2102602371}
   serializedVersion: 5
-  m_Mass: 4
+  m_Mass: 3.5
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -6048,8 +6127,8 @@ CapsuleCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 2
-  m_Radius: 0.14
-  m_Height: 0.49709213
+  m_Radius: 0.13
+  m_Height: 0.47709215
   m_Direction: 1
   m_Center: {x: 0, y: 0.10854607, z: 0}
 --- !u!54 &2122315295
@@ -6060,7 +6139,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2122315291}
   serializedVersion: 5
-  m_Mass: 8
+  m_Mass: 7
   m_LinearDamping: 0
   m_AngularDamping: 0.05
   m_CenterOfMass: {x: 0, y: 0, z: 0}
