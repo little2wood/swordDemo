@@ -757,9 +757,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyAI
   target: {fileID: 1076808055}
   detectRange: 12
-  attackRange: 3.08
+  attackRange: 1
   attackInterval: 3
-  moveSpeed: 2.6
+  moveSpeed: 1.5
   turnSpeed: 360
   facingOffset: 0
 --- !u!136 &469687790
@@ -1213,6 +1213,10 @@ PrefabInstance:
       objectReference: {fileID: 9100000, guid: 3eba733a481a0174ba4f14da3fdb30f1, type: 2}
     - target: {fileID: 5866666021909216657, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6851931719358459978, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      propertyPath: m_IsActive
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7999057481438587373, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
