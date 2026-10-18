@@ -2,12 +2,12 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 布娃娃：平时所有骨骼刚体为 kinematic（完全由动画驱动，零开销），
+/// 布娃娃（主角与敌人通用）：平时所有骨骼刚体为 kinematic（完全由动画驱动，零开销），
 /// 死亡时唤醒骨骼物理并施加冲量，角色自然倒地/翻滚。
 /// 骨骼部件由 Build() 自动生成（等价于 Ragdoll Wizard，但可脚本化）。
 /// </summary>
 [RequireComponent(typeof(Animator))]
-public class EnemyRagdoll : MonoBehaviour
+public class Ragdoll : MonoBehaviour
 {
     [Header("部件（Build 自动生成）")]
     public List<Rigidbody> parts = new List<Rigidbody>();
@@ -22,6 +22,7 @@ public class EnemyRagdoll : MonoBehaviour
     [Header("稳定性")]
     public int ragdollLayer = 9;                // 布娃娃专用层（该层内部互不碰撞）
     public bool ignoreSelfCollision = true;     // 关掉肢体互撞 → 消除抽搐的主因
+    public bool retargetCameraOnDeath = true;   // 死亡后把相机跟随目标切到骨盆（否则镜头留在原地）
     public bool freezeOnSettle = true;          // 静止后冻结，彻底不再抖
     public float settleDelay = 4.0f;            // 多少秒后开始强制减速
     public float freezeDelay = 5.5f;            // 多少秒后完全冻结（kinematic）
@@ -34,7 +35,7 @@ public class EnemyRagdoll : MonoBehaviour
     Animator anim;
     Rigidbody rootBody;
     Collider rootCollider;
-    MonoBehaviour aiScript;
+    MonoBehaviour[] controllers;   // 死亡时要停用的控制脚本（主角：PlayerController / 敌人：EnemyAI）
     Health health;
 
     bool active;
@@ -100,8 +101,16 @@ public class EnemyRagdoll : MonoBehaviour
         anim = GetComponent<Animator>();
         rootBody = GetComponent<Rigidbody>();
         rootCollider = GetComponent<Collider>();
-        aiScript = GetComponent<EnemyAI>();
         health = GetComponent<Health>();
+
+        // 死亡时要停用的控制脚本：主角是 PlayerController，敌人是 EnemyAI
+        var list = new List<MonoBehaviour>();
+        var pc = GetComponent<PlayerController>();
+        if (pc != null) list.Add(pc);
+        var ai = GetComponent<EnemyAI>();
+        if (ai != null) list.Add(ai);
+        controllers = list.ToArray();
+
         SetPartsKinematic(true);
 
         // 布娃娃层内部互不碰撞：肢体胶囊在骨盆/胸部附近必然重叠，
@@ -157,8 +166,12 @@ public class EnemyRagdoll : MonoBehaviour
         active = true;
         activateTime = Time.time;
 
-        // 1. 关掉动画与 AI，保留最后一帧姿势
-        if (aiScript != null) aiScript.enabled = false;
+        // 1. 关掉控制脚本与动画，保留最后一帧姿势
+        if (controllers != null)
+        {
+            for (int i = 0; i < controllers.Length; i++)
+                if (controllers[i] != null) controllers[i].enabled = false;
+        }
         if (anim != null) anim.enabled = false;
 
         // 2. 交出根物体控制权：主碰撞体与主刚体停用，避免两套管物理打架
@@ -175,7 +188,15 @@ public class EnemyRagdoll : MonoBehaviour
 
         // 3.5 修正视锥剔除：骨骼飞散后，SkinnedMeshRenderer 按 rootBone 算的包围盒会留在原地，
         //     导致"走近就看不见"。这里改用骨盆做包围盒基准 + 放大本地包围盒 + 离屏也更新。
-        PrepareRenderersForRagdoll();
+        Transform pelvis = FindPelvis();
+        PrepareRenderersForRagdoll(pelvis);
+
+        // 3.6 相机改跟骨盆（根物体已停用不动，否则镜头会停在原地看空气）
+        if (retargetCameraOnDeath && pelvis != null)
+        {
+            var camFollow = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
+            if (camFollow != null && camFollow.target == transform) camFollow.target = pelvis;
+        }
 
         // 4. 施加冲量（VelocityChange：不依赖质量，效果直观可控）
         Vector3 dir = hitDir;
@@ -192,15 +213,18 @@ public class EnemyRagdoll : MonoBehaviour
         }
     }
 
-    /// 布娃娃状态下让所有蒙皮网格始终可见（否则会被视锥剔除掉）
-    void PrepareRenderersForRagdoll()
+    Transform FindPelvis()
     {
-        Transform pelvis = null;
         foreach (var t in GetComponentsInChildren<Transform>(true))
         {
-            if (t.name == "pelvis") { pelvis = t; break; }
+            if (t.name == "pelvis") return t;
         }
+        return null;
+    }
 
+    /// 布娃娃状态下让所有蒙皮网格始终可见（否则会被视锥剔除掉）
+    void PrepareRenderersForRagdoll(Transform pelvis)
+    {
         foreach (var smr in GetComponentsInChildren<SkinnedMeshRenderer>(true))
         {
             smr.updateWhenOffscreen = true;                 // 离屏也继续蒙皮并刷新包围盒
@@ -285,7 +309,7 @@ public class EnemyRagdoll : MonoBehaviour
             var sl = new SoftJointLimit(); sl.limit = 60f; sl.bounciness = 0f; joint.swing1Limit = sl;
             var s2 = new SoftJointLimit(); s2.limit = 60f; s2.bounciness = 0f; joint.swing2Limit = s2;
             var tl = new SoftJointLimit(); tl.limit = -40f; tl.bounciness = 0f; joint.lowTwistLimit = tl;
-            var th = joint.highTwistLimit = new SoftJointLimit(); th.limit = 40f; joint.highTwistLimit = th;
+            var th = new SoftJointLimit(); th.limit = 40f; th.bounciness = 0f; joint.highTwistLimit = th;
             joint.enableProjection = true;               // 减少关节被拉散
         }
 
