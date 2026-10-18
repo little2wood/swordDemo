@@ -20,8 +20,8 @@ public class ThirdPersonCamera : MonoBehaviour
     public float maxPitch = 85f;        // 接近天顶留余量，避免朝向奇异
 
     [Header("鼠标")]
-    public float sensitivityX = 0.12f;  // 度/像素
-    public float sensitivityY = 0.12f;  // 度/像素
+    public float sensitivityX = 0.06f;  // 度/像素
+    public float sensitivityY = 0.06f;  // 度/像素
     public bool invertX = false;        // 水平方向取反
     public bool invertY = false;        // 垂直方向取反
 

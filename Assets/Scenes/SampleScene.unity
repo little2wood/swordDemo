@@ -419,10 +419,10 @@ MonoBehaviour:
   pitch: 18
   minPitch: 0
   maxPitch: 85
-  sensitivityX: 0.12
-  sensitivityY: 0.12
+  sensitivityX: 0.06
+  sensitivityY: 0.06
   invertX: 0
-  invertY: 0
+  invertY: 1
   collisionLayers:
     serializedVersion: 2
     m_Bits: 4294967295
