@@ -2,6 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// 角色控制器：物理驱动移动（WASD 按固定屏幕方向）+ 朝向平滑对齐移动方向 + 攻击仅在站立时可起手/续击。
+/// 攻击链全程（出刀/收势/连击）锁定移动与朝向，连击输入不受影响。
 /// 攻击点击经 PlayerInput 的缓冲传递到 FixedUpdate 消费，避免渲染帧与物理步不同步导致丢点击。
 /// 相机为固定偏移跟随（不旋转），动画只负责表演，位移完全由 Rigidbody 决定。
 /// </summary>
@@ -55,8 +56,8 @@ public class PlayerController : MonoBehaviour
             dir = (fwd * mv.y + right * mv.x).normalized;
         }
 
-        // ---- 位移：挥砍中(A/B/C)锁定；恢复动作(A_Rec/B_Rec)与常态正常移动 ----
-        if (IsAttackSwing() || !hasMove)
+        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)锁定；常态正常移动 ----
+        if (IsAttackChain() || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -68,8 +69,8 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = v;
         }
 
-        // ---- 朝向：平滑转向移动方向（攻击中锁定朝向不转） ----
-        if (hasMove && !IsAttackSwing())
+        // ---- 朝向：平滑转向移动方向（攻击链全程锁定朝向不转） ----
+        if (hasMove && !IsAttackChain())
         {
             float targetYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + facingOffset;
             Quaternion target = Quaternion.Euler(0f, targetYaw, 0f);
@@ -93,11 +94,11 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    /// 是否处于挥砍中（A/B/C）——锁移动且不可起手/续击
-    bool IsAttackSwing()
+    /// 是否处于攻击链（A/A_Rec/B/B_Rec/C）——全程锁定移动与朝向；A_Rec/B_Rec 仅放行连击输入
+    bool IsAttackChain()
     {
         int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
-        return h == AH || h == BH || h == CH;
+        return h == AH || h == ARecH || h == BH || h == BRecH || h == CH;
     }
 
     /// 是否可起手/续击：由"是否有移动输入"定义站立，而不是状态名——
