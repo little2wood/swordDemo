@@ -25,9 +25,12 @@ public class PlayerController : MonoBehaviour
 
     // Animator 参数与状态名 hash
     static readonly int MovingId = Animator.StringToHash("Moving");
+    static readonly int GuardId = Animator.StringToHash("Guard");
     static readonly int AttackId = Animator.StringToHash("Attack");
     static readonly int IdleH = Animator.StringToHash("Idle");
     static readonly int JogH = Animator.StringToHash("Jog");
+    static readonly int RaiseH = Animator.StringToHash("Shield_Raise");
+    static readonly int LowerH = Animator.StringToHash("Shield_Lower");
     static readonly int AH = Animator.StringToHash("A");
     static readonly int ARecH = Animator.StringToHash("A_Rec");
     static readonly int BH = Animator.StringToHash("B");
@@ -56,8 +59,8 @@ public class PlayerController : MonoBehaviour
             dir = (fwd * mv.y + right * mv.x).normalized;
         }
 
-        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)锁定；常态正常移动 ----
-        if (IsAttackChain() || !hasMove)
+        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)与防御(Raise/Lower)锁定；常态正常移动 ----
+        if (IsAttackChain() || IsGuarding() || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -69,8 +72,8 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = v;
         }
 
-        // ---- 朝向：平滑转向移动方向（攻击链全程锁定朝向不转） ----
-        if (hasMove && !IsAttackChain())
+        // ---- 朝向：平滑转向移动方向（攻击链与防御全程锁定朝向不转） ----
+        if (hasMove && !IsAttackChain() && !IsGuarding())
         {
             float targetYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + facingOffset;
             Quaternion target = Quaternion.Euler(0f, targetYaw, 0f);
@@ -79,6 +82,9 @@ public class PlayerController : MonoBehaviour
 
         // ---- 动画参数 ----
         anim.SetBool(MovingId, hasMove);
+
+        // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起） ----
+        anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
 
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
         if (input.TakeAttackRequest())
@@ -99,6 +105,13 @@ public class PlayerController : MonoBehaviour
     {
         int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
         return h == AH || h == ARecH || h == BH || h == BRecH || h == CH;
+    }
+
+    /// 是否处于防御状态（举盾/收盾）——锁定移动与朝向；过渡期间按来源状态判定，仍然算防御中
+    bool IsGuarding()
+    {
+        int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
+        return h == RaiseH || h == LowerH;
     }
 
     /// 是否可起手/续击：由"是否有移动输入"定义站立，而不是状态名——

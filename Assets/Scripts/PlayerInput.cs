@@ -20,6 +20,9 @@ public class PlayerInput : MonoBehaviour
     /// </summary>
     public bool AttackBuffered { get; private set; }
 
+    /// <summary>右键当前是否按住（防御意图）。持续状态，不是单帧事件。</summary>
+    public bool GuardHeld { get; private set; }
+
     void Start()
     {
         LockCursor();
@@ -54,6 +57,9 @@ public class PlayerInput : MonoBehaviour
         {
             AttackBuffered = true;
         }
+
+        // 鼠标右键：按住即防御，松开即收盾
+        GuardHeld = mouse != null && mouse.rightButton.isPressed;
     }
 
     /// <summary>消费攻击请求：返回是否存在待处理的点击，并清除缓冲。</summary>
