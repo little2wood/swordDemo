@@ -124,6 +124,10 @@ public class EnemyRagdoll : MonoBehaviour
         // 3. 唤醒骨骼物理
         SetPartsKinematic(false);
 
+        // 3.5 修正视锥剔除：骨骼飞散后，SkinnedMeshRenderer 按 rootBone 算的包围盒会留在原地，
+        //     导致"走近就看不见"。这里改用骨盆做包围盒基准 + 放大本地包围盒 + 离屏也更新。
+        PrepareRenderersForRagdoll();
+
         // 4. 施加冲量（VelocityChange：不依赖质量，效果直观可控）
         Vector3 dir = hitDir;
         dir.y = 0f;
@@ -136,6 +140,26 @@ public class EnemyRagdoll : MonoBehaviour
             if (p == null) continue;
             p.AddForce(v, ForceMode.VelocityChange);
             p.AddTorque(Random.insideUnitSphere * randomTorque, ForceMode.VelocityChange);
+        }
+    }
+
+    /// 布娃娃状态下让所有蒙皮网格始终可见（否则会被视锥剔除掉）
+    void PrepareRenderersForRagdoll()
+    {
+        Transform pelvis = null;
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == "pelvis") { pelvis = t; break; }
+        }
+
+        foreach (var smr in GetComponentsInChildren<SkinnedMeshRenderer>(true))
+        {
+            smr.updateWhenOffscreen = true;                 // 离屏也继续蒙皮并刷新包围盒
+            if (pelvis != null) smr.rootBone = pelvis;      // 包围盒基准跟随真正会飞的骨盆
+            var b = smr.localBounds;
+            b.center = new Vector3(0f, 0f, 0f);
+            b.size = Vector3.one * 8f;                      // 放大到足够覆盖飞散后的肢体
+            smr.localBounds = b;
         }
     }
 
