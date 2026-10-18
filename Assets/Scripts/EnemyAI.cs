@@ -18,11 +18,14 @@ public class EnemyAI : MonoBehaviour
 
     [Header("战斗")]
     public float attackInterval = 3f;   // 两次攻击的间隔（秒），从起手时刻开始计时
-    public float attackDamage = 20f;    // 每次挥爪伤害（主角锁血时不会真扣）
-    [Range(0f, 1f)]
-    public float hitTiming = 0.28f;     // 挥爪动作进行到多少时判定：0.28=手掌甩到最前（按动画采样实测）
+    public float attackDamage = 20f;    // 每次挥爪伤害
     public float moveSpeed = 2.6f;      // 追击速度（略慢于主角，给玩家走位空间）
     public float turnSpeed = 360f;      // deg/s，转向玩家的角速度
+
+    [Header("扫掠检测（手掌轨迹）")]
+    public Transform handL;             // 左手掌骨（留空则自动查找 hand_l）
+    public Transform handR;             // 右手掌骨（留空则自动查找 hand_r）
+    public bool debugSweep = false;     // 在 Scene 视图画出手掌扫掠检测线
 
     [Header("朝向")]
     public float facingOffset = 0f;     // 模型正面与 transform.forward 的夹角；若角色倒着走改成 180
@@ -31,7 +34,9 @@ public class EnemyAI : MonoBehaviour
     Animator anim;
 
     float nextAttackTime;
-    bool clawHitDone;           // 本次挥爪是否已判定过（按动画进度判定，避免抬手就扣血）
+    Vector3 prevHandL, prevHandR;   // 上一渲染帧两手掌位置（扫掠起点）
+    bool sweepInit;                 // 扫掠起点是否已采样
+    bool playerHitDone;             // 本次挥爪是否已结算（对玩家只结算一次）
 
     static readonly int MovingId = Animator.StringToHash("Moving");
     static readonly int AttackId = Animator.StringToHash("Attack");
@@ -46,26 +51,18 @@ public class EnemyAI : MonoBehaviour
             var p = GameObject.Find("Player");
             if (p != null) target = p.transform;
         }
+        if (handL == null) handL = FindDeep(transform, "hand_l");
+        if (handR == null) handR = FindDeep(transform, "hand_r");
+    }
+
+    void Update()
+    {
+        SweepHands();   // 扫掠检测跟动画帧走（Animator 在 Update 驱动），手掌采样按渲染帧稳定推进
     }
 
     void FixedUpdate()
     {
         if (target == null) return;
-
-        // 挥爪判定：按动画进度判一次（抬手阶段不判定，手掌甩到最前才扣血）
-        if (IsAttacking() && !clawHitDone)
-        {
-            var st = anim.GetCurrentAnimatorStateInfo(0);
-            if (st.normalizedTime >= hitTiming)
-            {
-                clawHitDone = true;
-                TryClawHit();
-            }
-        }
-        else if (!IsAttacking())
-        {
-            clawHitDone = false;
-        }
 
         Vector3 toTarget = target.position - transform.position;
         toTarget.y = 0f;
@@ -90,7 +87,6 @@ public class EnemyAI : MonoBehaviour
             {
                 anim.SetTrigger(AttackId);
                 nextAttackTime = Time.time + attackInterval;
-                clawHitDone = false;
             }
         }
         else if (dist <= detectRange)
@@ -108,18 +104,70 @@ public class EnemyAI : MonoBehaviour
         }
     }
 
-    /// 挥爪命中：距离与朝向双条件，命中主角（主角锁血时只广播事件不掉血）
-    void TryClawHit()
+    /// <summary>
+    /// 手掌扫掠命中：攻击状态下每帧检测两手掌的"上一帧→当前帧"扫掠线，
+    /// 手掌轨迹真正碰到主角才结算（抬手阶段天然不判定），方向取手掌挥扫速度方向。
+    /// 对主角一次挥爪只结算一次。
+    /// </summary>
+    void SweepHands()
     {
-        if (target == null) return;
-        var hp = target.GetComponent<Health>();
-        if (hp == null || hp.IsDead || hp.team != Health.Team.Player) return;
+        if (target == null || (!IsAttacking()) || (handL == null && handR == null))
+        {
+            sweepInit = false;
+            playerHitDone = false;
+            return;
+        }
 
-        Vector3 to = target.position - transform.position;
-        to.y = 0f;
-        if (to.magnitude > attackRange * 1.35f) return;     // 攻击过程中玩家可能走开一点
+        if (!sweepInit)
+        {
+            if (handL != null) prevHandL = handL.position;
+            if (handR != null) prevHandR = handR.position;
+            sweepInit = true;
+            return;
+        }
 
-        hp.TakeDamage(attackDamage, to.normalized);
+        SweepHand(handL, ref prevHandL);
+        SweepHand(handR, ref prevHandR);
+    }
+
+    /// 单只手掌的扫掠线检测；命中玩家方 Health 即结算一次
+    void SweepHand(Transform hand, ref Vector3 prev)
+    {
+        if (hand == null || playerHitDone) return;
+
+        Vector3 now = hand.position;
+        Vector3 swingDir = now - prev;
+
+        if (swingDir.sqrMagnitude > 0.0001f)
+        {
+            var hits = Physics.RaycastAll(prev, swingDir, swingDir.magnitude);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var hp = hits[i].collider.GetComponentInParent<Health>();
+                if (hp == null || hp.IsDead || hp.team != Health.Team.Player) continue;
+                playerHitDone = true;
+                hp.TakeDamage(attackDamage, swingDir);
+                if (debugSweep) Debug.DrawLine(prev, now, Color.green, 1f);
+                break;
+            }
+        }
+
+        if (debugSweep && swingDir.sqrMagnitude > 0.0001f)
+            Debug.DrawLine(prev, now, Color.magenta, 0.1f);
+
+        prev = now;
+    }
+
+    /// 递归查找子孙节点（按名字）
+    static Transform FindDeep(Transform root, string name)
+    {
+        if (root.name == name) return root;
+        for (int i = 0; i < root.childCount; i++)
+        {
+            var r = FindDeep(root.GetChild(i), name);
+            if (r != null) return r;
+        }
+        return null;
     }
 
     /// 是否正在播放攻击动画（含 Attack→Idle/Walk 的过渡，仍按源状态判定）
