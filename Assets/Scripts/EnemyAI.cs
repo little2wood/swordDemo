@@ -19,7 +19,8 @@ public class EnemyAI : MonoBehaviour
     [Header("战斗")]
     public float attackInterval = 3f;   // 两次攻击的间隔（秒），从起手时刻开始计时
     public float attackDamage = 20f;    // 每次挥爪伤害（主角锁血时不会真扣）
-    public float hitDelay = 0.45f;      // 起手到判定的延迟（对准挥爪挥出去的瞬间）
+    [Range(0f, 1f)]
+    public float hitTiming = 0.28f;     // 挥爪动作进行到多少时判定：0.28=手掌甩到最前（按动画采样实测）
     public float moveSpeed = 2.6f;      // 追击速度（略慢于主角，给玩家走位空间）
     public float turnSpeed = 360f;      // deg/s，转向玩家的角速度
 
@@ -30,7 +31,7 @@ public class EnemyAI : MonoBehaviour
     Animator anim;
 
     float nextAttackTime;
-    float pendingHitAt = -1f;   // 到点执行挥爪判定的时间；<0 表示无待处理判定
+    bool clawHitDone;           // 本次挥爪是否已判定过（按动画进度判定，避免抬手就扣血）
 
     static readonly int MovingId = Animator.StringToHash("Moving");
     static readonly int AttackId = Animator.StringToHash("Attack");
@@ -51,11 +52,19 @@ public class EnemyAI : MonoBehaviour
     {
         if (target == null) return;
 
-        // 挥爪判定：起手后延迟 hitDelay 判一次
-        if (pendingHitAt > 0f && Time.time >= pendingHitAt)
+        // 挥爪判定：按动画进度判一次（抬手阶段不判定，手掌甩到最前才扣血）
+        if (IsAttacking() && !clawHitDone)
         {
-            pendingHitAt = -1f;
-            TryClawHit();
+            var st = anim.GetCurrentAnimatorStateInfo(0);
+            if (st.normalizedTime >= hitTiming)
+            {
+                clawHitDone = true;
+                TryClawHit();
+            }
+        }
+        else if (!IsAttacking())
+        {
+            clawHitDone = false;
         }
 
         Vector3 toTarget = target.position - transform.position;
@@ -81,7 +90,7 @@ public class EnemyAI : MonoBehaviour
             {
                 anim.SetTrigger(AttackId);
                 nextAttackTime = Time.time + attackInterval;
-                pendingHitAt = Time.time + hitDelay;
+                clawHitDone = false;
             }
         }
         else if (dist <= detectRange)

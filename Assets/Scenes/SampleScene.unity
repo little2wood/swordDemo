@@ -966,8 +966,8 @@ MonoBehaviour:
   detectRange: 12
   attackRange: 1
   attackInterval: 3
-  attackDamage: 20
-  hitDelay: 0.45
+  attackDamage: 50
+  hitTiming: 0.28
   moveSpeed: 1.5
   turnSpeed: 360
   facingOffset: 0
@@ -1080,6 +1080,29 @@ MonoBehaviour:
   settleDelay: 4
   freezeDelay: 5.5
   settleDamping: 12
+--- !u!114 &469687796
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 469687787}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 625871ef87a96634181b8a77945300f3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HealthBar
+  mode: 1
+  health: {fileID: 469687794}
+  worldWidth: 1.6
+  worldHeight: 0.16
+  worldOffset: {x: 0, y: 1.95, z: 0}
+  billboard: 1
+  screenPos: {x: 24, y: 24}
+  screenSize: {x: 320, y: 26}
+  fillColor: {r: 0.85, g: 0.14, b: 0.14, a: 1}
+  backColor: {r: 0, g: 0, b: 0, a: 0.65}
+  hideOnDeath: 1
 --- !u!1 &471596838 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -5912894932395400830, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
@@ -2063,6 +2086,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 469687795}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 469687796}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 642556237}
@@ -4099,6 +4125,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1076808058}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808059}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1865327341}
@@ -4436,6 +4465,29 @@ MonoBehaviour:
   settleDelay: 4
   freezeDelay: 5.5
   settleDamping: 12
+--- !u!114 &1076808059
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 625871ef87a96634181b8a77945300f3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::HealthBar
+  mode: 0
+  health: {fileID: 1076808057}
+  worldWidth: 1.6
+  worldHeight: 0.16
+  worldOffset: {x: 0, y: 2.2, z: 0}
+  billboard: 1
+  screenPos: {x: 24, y: 24}
+  screenSize: {x: 320, y: 26}
+  fillColor: {r: 0.18, g: 0.78, b: 0.28, a: 1}
+  backColor: {r: 0, g: 0, b: 0, a: 0.65}
+  hideOnDeath: 0
 --- !u!4 &1079367453 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7378292883642932892, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
