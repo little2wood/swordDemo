@@ -18,10 +18,19 @@ public class PlayerController : MonoBehaviour
     public float turnSpeed = 540f;      // deg/s，朝向转向移动方向的角速度
     public float facingOffset = 0f;     // 模型自带朝向偏移：实测模型正面朝 +Z 故为 0；若角色背对移动方向改成 180
 
+    [Header("挥砍判定")]
+    public float attackDamage = 34f;    // 每次挥砍伤害
+    public float hitRange = 2.6f;       // 有效距离
+    [Range(10f, 180f)] public float hitAngle = 70f;   // 以朝向为中心的扇形半角
+    [Range(0f, 1f)] public float hitTiming = 0.3f;    // 挥砍进度到多少时判定（0~1）
+
     Rigidbody rb;
     Animator anim;
     PlayerInput input;
     Camera cam;
+
+    int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
+    bool swingHitDone;      // 本刀是否已判定过（避免一次挥砍多次伤害）
 
     // Animator 参数与状态名 hash
     static readonly int MovingId = Animator.StringToHash("Moving");
@@ -86,6 +95,9 @@ public class PlayerController : MonoBehaviour
         // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起） ----
         anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
 
+        // ---- 挥砍命中判定：出刀/连击的每一刀只判一次 ----
+        TrySwingHit();
+
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
         if (input.TakeAttackRequest())
         {
@@ -105,6 +117,44 @@ public class PlayerController : MonoBehaviour
     {
         int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
         return h == AH || h == ARecH || h == BH || h == BRecH || h == CH;
+    }
+
+    /// 挥砍命中：在出刀动作进行到 hitTiming 时做一次扇形判定，命中的敌人扣血并受冲量方向
+    void TrySwingHit()
+    {
+        var st = anim.GetCurrentAnimatorStateInfo(0);
+        int h = st.shortNameHash;
+        bool swinging = (h == AH || h == BH || h == CH);
+
+        if (!swinging)
+        {
+            lastSwingHash = 0;
+            swingHitDone = false;
+            return;
+        }
+
+        if (h != lastSwingHash)     // 新的一刀
+        {
+            lastSwingHash = h;
+            swingHitDone = false;
+        }
+
+        if (swingHitDone || st.normalizedTime < hitTiming) return;
+        swingHitDone = true;
+
+        var targets = FindObjectsByType<Health>(FindObjectsSortMode.None);
+        for (int i = 0; i < targets.Length; i++)
+        {
+            var hp = targets[i];
+            if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) continue;
+
+            Vector3 to = hp.transform.position - transform.position;
+            to.y = 0f;
+            if (to.magnitude > hitRange) continue;
+            if (Vector3.Angle(transform.forward, to.normalized) > hitAngle) continue;
+
+            hp.TakeDamage(attackDamage, to.normalized);
+        }
     }
 
     /// 是否处于防御状态（举盾/收盾）——锁定移动与朝向；过渡期间按来源状态判定，仍然算防御中
