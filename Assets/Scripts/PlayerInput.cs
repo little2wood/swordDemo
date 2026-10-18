@@ -10,6 +10,9 @@ public class PlayerInput : MonoBehaviour
     /// <summary>WASD 移动意图。x: A(-1)/D(+1)，y: S(-1)/W(+1)。对角线已归一化。</summary>
     public Vector2 MoveInput { get; private set; }
 
+    /// <summary>本帧鼠标位移（像素）。x 向右为正，y 向上为正。</summary>
+    public Vector2 MouseDelta { get; private set; }
+
     /// <summary>
     /// 攻击请求缓冲：Update 里检测到点击就置位，保持到被 PlayerController 消费为止。
     /// 不用单帧 bool 是因为 FixedUpdate 与渲染帧不同步——点击若落在没有物理步的帧上，
@@ -42,6 +45,9 @@ public class PlayerInput : MonoBehaviour
         {
             MoveInput = MoveInput.normalized;
         }
+
+        // 鼠标位移：供相机做球面轨道旋转
+        MouseDelta = mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
 
         // 鼠标左键：按下瞬间 → 置入缓冲（由 PlayerController 消费或丢弃）
         if (mouse != null && mouse.leftButton.wasPressedThisFrame)
