@@ -10,8 +10,12 @@ public class PlayerInput : MonoBehaviour
     /// <summary>WASD 移动意图。x: A(-1)/D(+1)，y: S(-1)/W(+1)。对角线已归一化。</summary>
     public Vector2 MoveInput { get; private set; }
 
-    /// <summary>本帧是否按下了鼠标左键（攻击请求）。</summary>
-    public bool AttackPressed { get; private set; }
+    /// <summary>
+    /// 攻击请求缓冲：Update 里检测到点击就置位，保持到被 PlayerController 消费为止。
+    /// 不用单帧 bool 是因为 FixedUpdate 与渲染帧不同步——点击若落在没有物理步的帧上，
+    /// 单帧 bool 会在下一帧被 Update 覆盖，造成"点了没反应"。
+    /// </summary>
+    public bool AttackBuffered { get; private set; }
 
     void Start()
     {
@@ -39,8 +43,19 @@ public class PlayerInput : MonoBehaviour
             MoveInput = MoveInput.normalized;
         }
 
-        // 鼠标左键：按下瞬间
-        AttackPressed = mouse != null && mouse.leftButton.wasPressedThisFrame;
+        // 鼠标左键：按下瞬间 → 置入缓冲（由 PlayerController 消费或丢弃）
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+        {
+            AttackBuffered = true;
+        }
+    }
+
+    /// <summary>消费攻击请求：返回是否存在待处理的点击，并清除缓冲。</summary>
+    public bool TakeAttackRequest()
+    {
+        bool v = AttackBuffered;
+        AttackBuffered = false;
+        return v;
     }
 
     /// <summary>锁定光标到屏幕中心并隐藏（第三人称操作的标准做法）。</summary>
