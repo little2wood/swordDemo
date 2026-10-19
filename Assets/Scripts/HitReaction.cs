@@ -1,7 +1,9 @@
 using UnityEngine;
 
 /// <summary>
-/// 受击摆动（整体倾摆）：受击后身体朝攻击方向倾倒，欠阻尼弹簧回摆 1~2 次归零。
+/// 受击摆动（上半身倾摆）：受击后上半身朝攻击方向倾倒，欠阻尼弹簧回摆 1~2 次归零。
+/// 只叠加到 spine/head（不碰 pelvis）——骨盆一旦旋转会带动整条腿、脚离地出戏；
+/// 上半身弯/歪时腿和脚完全不受影响。
 /// LateUpdate 在 Animator 写完骨骼姿态之后叠加倾斜（渲染前），
 /// 下一帧 Animator 自动覆盖骨骼，无需恢复逻辑；死亡后骨骼交给布娃娃物理，立即停手。
 /// </summary>
@@ -27,7 +29,7 @@ public class HitReaction : MonoBehaviour
     float angVel;     // 角速度（deg/s）
     Vector3 axis;     // 倾倒轴（世界空间）
 
-    Transform pelvis, spine, head;
+    Transform spine, head;   // 只晃上半身：spine/head 不在腿的父链上，脚不会离地
     Health hp;
 
     void Awake()
@@ -36,11 +38,9 @@ public class HitReaction : MonoBehaviour
         var anim = animator != null ? animator : GetComponent<Animator>();
         if (anim != null)
         {
-            pelvis = anim.GetBoneTransform(HumanBodyBones.Hips);
             spine = anim.GetBoneTransform(HumanBodyBones.Spine);
             head = anim.GetBoneTransform(HumanBodyBones.Head);
         }
-        if (pelvis == null) pelvis = FindDeep(transform, "pelvis");
         if (spine == null) spine = FindDeep(transform, "spine");
         if (head == null) head = FindDeep(transform, "head");
         if (hp != null) hp.OnDamaged += OnHit;
@@ -62,7 +62,7 @@ public class HitReaction : MonoBehaviour
     void LateUpdate()
     {
         if (hp == null || hp.IsDead) return;    // 死亡后骨骼交给布娃娃物理，停手
-        if (pelvis == null && spine == null && head == null) return;
+        if (spine == null && head == null) return;
 
         // 欠阻尼弹簧积分：acc = -刚度*角度 - 阻尼*角速度
         float dt = Time.deltaTime;
@@ -71,10 +71,9 @@ public class HitReaction : MonoBehaviour
 
         if (Mathf.Abs(angle) < 0.05f && Mathf.Abs(angVel) < 0.5f) return;   // 静止时零开销
 
-        // 权重自下而上衰减：整体一歪，骨盆带得最多，头最少
-        Apply(pelvis, angle, axis, 1.0f);
-        Apply(spine, angle, axis, 0.7f);
-        Apply(head, angle, axis, 0.4f);
+        // 只晃上半身：腰带得最多，头其次；骨盆/腿不动，脚不离地
+        Apply(spine, angle, axis, 1.0f);
+        Apply(head, angle, axis, 0.5f);
     }
 
     /// 世界空间轴旋转叠加到骨骼当前旋转（Animator 更新之后、渲染之前）
