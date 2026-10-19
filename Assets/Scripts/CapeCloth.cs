@@ -16,24 +16,36 @@ public class CapeCloth : MonoBehaviour
 
     [Header("锚定（相对锚骨的本地偏移）")]
     public float anchorHeight = 0.25f;  // 顶行相对 spine_02 的高度（约肩线）
-    public float anchorBack = 0.05f;    // 贴背偏移（spine_02 local +Z = 模型背后）
+    public float anchorBack = -0.10f;   // 贴背偏移（实测 spine_02 local +Z 朝模型胸前，负值才落到背后）
 
     [Header("引用（留空自动查找 spine_02）")]
     public Transform anchorBone;
+
+    [Header("物理（Verlet/PBD）")]
+    public float gravity = -9.8f;           // 重力加速度
+    [Range(0.8f, 1f)] public float damping = 0.985f;    // 速度保留率（1=无阻尼）
+    public int constraintIterations = 4;    // 距离约束求解迭代次数
+
+    [Header("风场")]
+    public float windStrength = 1.5f;       // 环境微风强度（m/s²）
+    public float windFrequency = 1.6f;      // 摆动频率
+    public float moveWindScale = 0.9f;      // 主角速度 → 相对风系数（跑动后飘）
 
     [Header("外观（renderer 无材质时自动按此建运行时材质）")]
     public Color clothColor = new Color(0.45f, 0.12f, 0.10f);
     public float smoothness = 0.35f;
 
     Transform spine;
+    Rigidbody bodyRb;
     Vector3[] pos;              // 粒子位置（世界空间）
-    Vector3[] prevPos;          // 上一帧位置（步骤② Verlet 积分用）
+    Vector3[] prevPos;          // 上一帧位置（Verlet 积分）
     Vector3[] anchorLocals;     // 顶行粒子相对锚骨的本地偏移
     Constraint[] cons;          // 距离约束（步骤③ 求解用）
     struct Constraint { public int a, b; public float rest; }
     Mesh mesh;
     int halfCount;              // cols*rows
     int vertCount;              // 双面顶点 = half*2
+    float time;                 // 风场累计时间
 
     void Awake() { BuildNow(); }
 
@@ -42,9 +54,25 @@ public class CapeCloth : MonoBehaviour
     {
         spine = anchorBone != null ? anchorBone : FindDeep(transform.root != null ? transform.root : transform, "spine_02");
         if (spine == null) { Debug.LogError("[CapeCloth] 找不到锚骨 spine_02"); return; }
+        bodyRb = transform.root != null ? transform.root.GetComponentInParent<Rigidbody>() : null;
         InitParticles();
         BuildConstraints();
         BuildMesh();
+    }
+
+    /// 风场：环境微风（双正弦，沿模型背后吹 + 侧向摆动） + 主角速度反向风（跑动时后飘）
+    Vector3 ComputeWind()
+    {
+        Vector3 back = spine != null ? -spine.forward : Vector3.back;
+        back.y = 0f;
+        if (back.sqrMagnitude < 0.0001f) back = Vector3.back;
+        back.Normalize();
+        float sway1 = Mathf.Sin(time * windFrequency) * 0.6f;
+        float sway2 = Mathf.Sin(time * windFrequency * 2.7f + 1.3f) * 0.4f;
+        Vector3 env = (back * (0.6f + sway1) + (spine != null ? spine.right : Vector3.right) * sway2) * windStrength;
+        Vector3 vel = bodyRb != null ? bodyRb.linearVelocity : Vector3.zero;
+        vel.y = 0f;
+        return env + -vel * moveWindScale;
     }
 
     /// 粒子初始位置：顶行按锚点展开，其余行竖直下垂
@@ -92,12 +120,13 @@ public class CapeCloth : MonoBehaviour
         mesh = new Mesh { name = "Cape" };
         var verts = new Vector3[vertCount];
         var uvs = new Vector2[vertCount];
+        var w2l = transform.worldToLocalMatrix;
         for (int i = 0; i < halfCount; i++)
         {
             int c = i % cols, r = i / cols;
             var uv = new Vector2((float)c / (cols - 1), 1f - (float)r / (rows - 1));
-            verts[i] = pos[i];
-            verts[halfCount + i] = pos[i];
+            verts[i] = w2l.MultiplyPoint3x4(pos[i]);        // 粒子是世界坐标，顶点必须转 mesh 本地坐标（否则双重变换，披风飘离主角）
+            verts[halfCount + i] = verts[i];
             uvs[i] = uv;
             uvs[halfCount + i] = uv;
         }
@@ -138,9 +167,43 @@ public class CapeCloth : MonoBehaviour
 
     void LateUpdate()
     {
-        if (mesh == null || pos == null) return;
+        if (mesh == null || pos == null || cons == null) return;
 
-        // 顶行锚定：强制对齐锚骨世界位置（物理更新后再 pin；锚点位移不产生粒子速度）
+        float dt = Mathf.Min(Time.deltaTime, 1f / 30f);
+        time += dt;
+
+        // ---- ② Verlet 积分：newPos = pos + (pos - prev)*damping + a*dt² ----
+        // 顶行（r==0）是锚点，不积分
+        Vector3 wind = ComputeWind();
+        Vector3 accel = new Vector3(0f, gravity, 0f) + wind;
+        float dt2 = dt * dt;
+        for (int i = cols; i < pos.Length; i++)
+        {
+            Vector3 newPos = pos[i] + (pos[i] - prevPos[i]) * damping + accel * dt2;
+            prevPos[i] = pos[i];
+            pos[i] = newPos;
+        }
+
+        // ---- ③ 距离约束求解（PBD）：迭代把相邻粒子拉回 rest 长度 ----
+        for (int it = 0; it < constraintIterations; it++)
+        {
+            for (int ci = 0; ci < cons.Length; ci++)
+            {
+                var con = cons[ci];
+                Vector3 delta = pos[con.b] - pos[con.a];
+                float d = delta.magnitude;
+                if (d < 1e-6f) continue;
+                float diff = (d - con.rest) / d;
+                bool aPinned = con.a < cols;    // 顶行是锚点
+                bool bPinned = con.b < cols;
+                if (aPinned && bPinned) continue;
+                if (aPinned) pos[con.b] -= delta * diff;                 // 锚点不动，位移全给另一端
+                else if (bPinned) pos[con.a] += delta * diff;
+                else { pos[con.a] += delta * (diff * 0.5f); pos[con.b] -= delta * (diff * 0.5f); }
+            }
+        }
+
+        // ---- 顶行锚定：强制对齐锚骨世界位置（最后执行；锚点位移不产生粒子速度） ----
         if (spine != null)
             for (int c = 0; c < cols; c++)
             {
@@ -155,10 +218,11 @@ public class CapeCloth : MonoBehaviour
     void SyncMesh()
     {
         var verts = new Vector3[vertCount];
+        var w2l = transform.worldToLocalMatrix;
         for (int i = 0; i < halfCount; i++)
         {
-            verts[i] = pos[i];
-            verts[halfCount + i] = pos[i];
+            verts[i] = w2l.MultiplyPoint3x4(pos[i]);    // 世界坐标 → 本地坐标（mesh 挂在子物体上，直接写世界坐标会被再次平移）
+            verts[halfCount + i] = verts[i];
         }
         mesh.SetVertices(verts);
         mesh.RecalculateNormals();
