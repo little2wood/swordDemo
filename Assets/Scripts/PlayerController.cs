@@ -29,6 +29,11 @@ public class PlayerController : MonoBehaviour
     [Range(0f, 1f)] public float tipLength = 0.25f;          // 参与判定的剑尖段长度（从剑尖沿刃往回取；0=纯剑尖点，≈剑长=整条刃）
     public bool debugSweep = false;     // 在 Scene 视图画出扫掠检测线（黄=刃线，红=扫掠线）
 
+    [Header("击飞可互动物体（Prop 层：箱子等）")]
+    public LayerMask propLayer;         // 可互动物体所在层（Inspector 选 Prop）；主角/敌人/平台不在该层，天然不受影响
+    public float bladeMass = 2f;        // 剑的有效质量：冲量 = 剑尖速度(m/s) × 该质量(kg)，单位 N·s
+    public float maxSwingSpeed = 18f;   // 剑尖速度上限（m/s）：防卡顿帧或速度峰值把物体弹射上天
+
     [Header("扫掠激活窗口（normalizedTime 区间；前摇/收势不判，按各刀剑尖速度曲线实测标定）")]
     public Vector2 windowA = new Vector2(0.40f, 0.75f);   // A：挥砍爆发 0.46~0.65
     public Vector2 windowB = new Vector2(0.35f, 0.65f);   // B：挥砍爆发 0.375~0.56
@@ -44,6 +49,7 @@ public class PlayerController : MonoBehaviour
     Vector3 prevInner;      // 上一渲染帧剑尖段的内端点（扫掠胶囊轴的另一端）
     bool sweepInit;         // 扫掠起点是否已采样
     readonly HashSet<Health> hitThisSwing = new HashSet<Health>();  // 本刀已结算的目标（对同一目标只结算一次）
+    readonly HashSet<Rigidbody> hitPropsThisSwing = new HashSet<Rigidbody>();  // 本刀已推过的可互动物体（一次挥砍只推一次）
 
     // Animator 参数与状态名 hash
     static readonly int MovingId = Animator.StringToHash("Moving");
@@ -164,6 +170,7 @@ public class PlayerController : MonoBehaviour
             lastSwingHash = 0;
             sweepInit = false;
             hitThisSwing.Clear();
+            hitPropsThisSwing.Clear();
             return;
         }
 
@@ -172,6 +179,7 @@ public class PlayerController : MonoBehaviour
             lastSwingHash = h;
             sweepInit = false;
             hitThisSwing.Clear();
+            hitPropsThisSwing.Clear();
         }
 
         // 进度窗口：前摇/收势阶段剑尖轨迹不算攻击，窗口外不检测。
@@ -200,8 +208,12 @@ public class PlayerController : MonoBehaviour
         if (swingDir.sqrMagnitude < 0.0001f)
             swingDir = transform.forward;
 
-        BladeOverlap(innerNow, tipNow, swingDir);           // ① 刃线：当前帧剑尖段胶囊与敌人重叠
-        BladeSweep(prevInner, prevTip, tipNow, swingDir);   // ② 扫掠线：上一帧剑尖段沿挥扫方向扫过帧间距
+        // 剑尖真实线速度（m/s）：帧间位移 / dt（dt 钳上下限，防卡顿帧算出荒谬速度）
+        float dt = Mathf.Clamp(Time.deltaTime, 1f / 240f, 1f / 20f);
+        Vector3 tipVel = (tipNow - prevTip) / dt;
+
+        BladeOverlap(innerNow, tipNow, swingDir, tipVel);           // ① 刃线：当前帧剑尖段胶囊与敌人重叠
+        BladeSweep(prevInner, prevTip, tipNow, swingDir, tipVel);   // ② 扫掠线：上一帧剑尖段沿挥扫方向扫过帧间距
 
         if (debugSweep)
         {
@@ -233,27 +245,34 @@ public class PlayerController : MonoBehaviour
     }
 
     /// 刃线检测：当前帧剑尖段以胶囊（轴=剑尖段内端→剑尖，半径=bladeRadius）与敌人重叠即命中
-    void BladeOverlap(Vector3 p1, Vector3 p2, Vector3 swingDir)
+    void BladeOverlap(Vector3 p1, Vector3 p2, Vector3 swingDir, Vector3 tipVel)
     {
         var cols = Physics.OverlapCapsule(p1, p2, bladeRadius);
         for (int i = 0; i < cols.Length; i++)
-            SettleHit(cols[i], swingDir);
+            SettleHit(cols[i], swingDir, tipVel, cols[i].ClosestPoint(bladeTip.position));   // 重叠无命中点，取物体上离剑尖最近的点
     }
 
     /// 扫掠检测：上一帧剑尖段胶囊沿挥扫方向扫过帧间距（旋转扫掠以平移近似，帧间误差厘米级）。
     /// CapsuleCast 不报告初始重叠，起始帧的重叠由上一帧的刃线检测负责，帧间衔接无缝。
-    void BladeSweep(Vector3 prevInner, Vector3 prevTip, Vector3 tipNow, Vector3 swingDir)
+    void BladeSweep(Vector3 prevInner, Vector3 prevTip, Vector3 tipNow, Vector3 swingDir, Vector3 tipVel)
     {
         Vector3 move = tipNow - prevTip;
         if (move.sqrMagnitude < 1e-8f) return;
         var hits = Physics.CapsuleCastAll(prevInner, prevTip, bladeRadius, move, move.magnitude);
         for (int i = 0; i < hits.Length; i++)
-            SettleHit(hits[i].collider, swingDir);
+            SettleHit(hits[i].collider, swingDir, tipVel, hits[i].point);   // cast 自带命中点
     }
 
-    /// 命中结算：过滤阵营/已死/本刀重复；命中自己/地面等无阵营对象自动忽略
-    void SettleHit(Collider col, Vector3 swingDir)
+    /// 命中结算：可互动物体（Prop 层）在接触点施加冲量；敌人按阵营/已死/本刀重复过滤后扣血。
+    /// 主角/敌人/平台不在 Prop 层，走不到冲量分支，因此不受推力影响。
+    void SettleHit(Collider col, Vector3 swingDir, Vector3 tipVel, Vector3 point)
     {
+        if (PropImpulse.IsProp(col.gameObject, propLayer))
+        {
+            PropImpulse.Apply(col.attachedRigidbody, tipVel, bladeMass, maxSwingSpeed, point, hitPropsThisSwing);
+            return;
+        }
+
         var hp = col.GetComponentInParent<Health>();
         if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
         if (!hitThisSwing.Add(hp)) return;    // 这个目标本刀已结算过

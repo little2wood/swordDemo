@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 /// <summary>
 /// 敌人 AI：待机 → 发现玩家后朝玩家走 → 进入攻击距离停步并周期性攻击。
@@ -28,6 +29,11 @@ public class EnemyAI : MonoBehaviour
     [Range(0.01f, 0.3f)] public float clawRadius = 0.08f;   // 爪击扫掠半径（球体，即判定容错度）
     public bool debugSweep = false;     // 在 Scene 视图画出手掌扫掠检测线
 
+    [Header("击飞可互动物体（Prop 层：箱子等）")]
+    public LayerMask propLayer;         // 可互动物体所在层（Inspector 选 Prop）；主角/敌人/平台不在该层，天然不受影响
+    public float clawMass = 2.5f;       // 爪的有效质量：冲量 = 手掌速度(m/s) × 该质量(kg)
+    public float maxClawSpeed = 12f;    // 手掌速度上限（m/s）
+
     [Header("朝向")]
     public float facingOffset = 0f;     // 模型正面与 transform.forward 的夹角；若角色倒着走改成 180
 
@@ -38,6 +44,7 @@ public class EnemyAI : MonoBehaviour
     Vector3 prevHandL, prevHandR;   // 上一渲染帧两手掌位置（扫掠起点）
     bool sweepInit;                 // 扫掠起点是否已采样
     bool playerHitDone;             // 本次挥爪是否已结算（对玩家只结算一次）
+    readonly HashSet<Rigidbody> hitPropsThisSwipe = new HashSet<Rigidbody>();  // 本次挥爪已推过的可互动物体（一次挥爪只推一次）
 
     static readonly int MovingId = Animator.StringToHash("Moving");
     static readonly int AttackId = Animator.StringToHash("Attack");
@@ -116,6 +123,7 @@ public class EnemyAI : MonoBehaviour
         {
             sweepInit = false;
             playerHitDone = false;
+            hitPropsThisSwipe.Clear();
             return;
         }
 
@@ -131,29 +139,30 @@ public class EnemyAI : MonoBehaviour
         SweepHand(handR, ref prevHandR);
     }
 
-    /// 单只手掌的带宽度扫掠检测（球体近似爪击体积）；命中玩家方 Health 即结算一次
+    /// 单只手掌的带宽度扫掠检测（球体近似爪击体积）：命中玩家方 Health 结算一次，命中 Prop 层箱子施加冲量
     void SweepHand(Transform hand, ref Vector3 prev)
     {
-        if (hand == null || playerHitDone) return;
+        if (hand == null) return;
 
         Vector3 now = hand.position;
         Vector3 swingDir = now - prev;
 
         if (swingDir.sqrMagnitude > 0.0001f)
         {
-            // ① 起点球重叠：挥爪瞬间爪子已贴在玩家身上（SphereCast 不报告初始重叠，需单独补；
+            // 手掌真实线速度（m/s）：帧间位移 / dt（dt 钳上下限，防卡顿帧算出荒谬速度）
+            float dt = Mathf.Clamp(Time.deltaTime, 1f / 240f, 1f / 20f);
+            Vector3 handVel = swingDir / dt;
+
+            // ① 起点球重叠：挥爪瞬间爪子已贴在目标身上（SphereCast 不报告初始重叠，需单独补；
             //    上一帧的终点重叠也由此处衔接覆盖）
             var cols = Physics.OverlapSphere(prev, clawRadius);
             for (int i = 0; i < cols.Length; i++)
-                SettleHit(cols[i], swingDir);
+                SettleHit(cols[i], swingDir, handVel, cols[i].ClosestPoint(now));
 
-            // ② 扫掠球：上一帧→当前帧爪子扫过的路径
-            if (!playerHitDone)
-            {
-                var hits = Physics.SphereCastAll(prev, clawRadius, swingDir, swingDir.magnitude);
-                for (int i = 0; i < hits.Length; i++)
-                    SettleHit(hits[i].collider, swingDir);
-            }
+            // ② 扫掠球：上一帧→当前帧爪子扫过的路径（cast 自带命中点）
+            var hits = Physics.SphereCastAll(prev, clawRadius, swingDir, swingDir.magnitude);
+            for (int i = 0; i < hits.Length; i++)
+                SettleHit(hits[i].collider, swingDir, handVel, hits[i].point);
 
             if (playerHitDone && debugSweep) Debug.DrawLine(prev, now, Color.green, 1f);
         }
@@ -164,9 +173,16 @@ public class EnemyAI : MonoBehaviour
         prev = now;
     }
 
-    /// 命中结算：过滤阵营/已死/本次挥爪重复；通过即扣血并结束本次挥爪的判定
-    void SettleHit(Collider col, Vector3 swingDir)
+    /// 命中结算：可互动物体（Prop 层）在接触点施加冲量（不受 playerHitDone 影响，箱子照样被推）；
+    /// 玩家方 Health 按阵营/已死/本次挥爪重复过滤后扣血。主角/敌人/平台不在 Prop 层，走不到冲量分支。
+    void SettleHit(Collider col, Vector3 swingDir, Vector3 handVel, Vector3 point)
     {
+        if (PropImpulse.IsProp(col.gameObject, propLayer))
+        {
+            PropImpulse.Apply(col.attachedRigidbody, handVel, clawMass, maxClawSpeed, point, hitPropsThisSwipe);
+            return;
+        }
+
         if (playerHitDone) return;
         var hp = col.GetComponentInParent<Health>();
         if (hp == null || hp.IsDead || hp.team != Health.Team.Player) return;
