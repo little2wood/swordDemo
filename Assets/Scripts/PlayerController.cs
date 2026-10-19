@@ -25,6 +25,7 @@ public class PlayerController : MonoBehaviour
     [Header("扫掠检测（剑尖轨迹）")]
     public Transform bladeBase;         // 剑根 Transform（留空则自动查找 Sword）
     public Transform bladeTip;          // 剑尖 Transform（留空则自动查找 SwordTip）
+    [Range(0.01f, 0.3f)] public float bladeRadius = 0.05f;   // 剑刃半宽（胶囊半径，即判定容错度）
     public bool debugSweep = false;     // 在 Scene 视图画出扫掠检测线（黄=刃线，红=扫掠线）
 
     [Header("扫掠激活窗口（normalizedTime 区间；前摇/收势不判，按各刀剑尖速度曲线实测标定）")]
@@ -39,6 +40,7 @@ public class PlayerController : MonoBehaviour
 
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
     Vector3 prevTip;        // 上一渲染帧的剑尖位置（扫掠起点）
+    Vector3 prevBase;       // 上一渲染帧的剑根位置（扫掠胶囊轴的另一端）
     bool sweepInit;         // 扫掠起点是否已采样
     readonly HashSet<Health> hitThisSwing = new HashSet<Health>();  // 本刀已结算的目标（对同一目标只结算一次）
 
@@ -144,8 +146,8 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测两条线段——
-    /// ① 刃线（剑根→剑尖，剑身当前是否插在敌人身上）；② 扫掠线（上一帧剑尖→当前剑尖，一帧内扫过的路径，防高速穿透漏检）。
+    /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测剑刃胶囊（轴=剑根→剑尖，半径=bladeRadius）——
+    /// ① 刃线（当前帧剑身胶囊是否压在敌人身上）；② 扫掠线（上一帧刃胶囊沿挥扫方向扫过帧间距，一帧内扫过的体积，防高速穿透漏检）。
     /// 命中方向取剑尖本帧的挥扫速度方向，攻击因此"有方向"：横扫往侧向、下劈带向下分量。
     /// 对同一敌人一次挥砍只结算一次。
     /// </summary>
@@ -180,9 +182,11 @@ public class PlayerController : MonoBehaviour
         }
 
         Vector3 tipNow = bladeTip.position;
+        Vector3 baseNow = bladeBase != null ? bladeBase.position : prevTip;
         if (!sweepInit)
         {
             prevTip = tipNow;       // 首帧只记录起点，不做检测
+            prevBase = baseNow;
             sweepInit = true;
             return;
         }
@@ -193,32 +197,55 @@ public class PlayerController : MonoBehaviour
         if (swingDir.sqrMagnitude < 0.0001f)
             swingDir = transform.forward;
 
-        Vector3 basePos = bladeBase != null ? bladeBase.position : prevTip;
-        SweepLine(basePos, tipNow, swingDir);   // 刃线
-        SweepLine(prevTip, tipNow, swingDir);   // 扫掠线
+        BladeOverlap(baseNow, tipNow, swingDir);           // ① 刃线：当前帧剑身胶囊与敌人重叠
+        BladeSweep(prevBase, prevTip, tipNow, swingDir);   // ② 扫掠线：上一帧刃胶囊沿挥扫方向扫过帧间距
 
         if (debugSweep)
         {
-            Debug.DrawLine(basePos, tipNow, Color.yellow, 0.1f);
+            Debug.DrawLine(baseNow, tipNow, Color.yellow, 0.1f);
             Debug.DrawLine(prevTip, tipNow, Color.red, 0.1f);
+            DebugRadius(baseNow, bladeRadius, Color.yellow);
+            DebugRadius(tipNow, bladeRadius, Color.red);
         }
 
         prevTip = tipNow;
+        prevBase = baseNow;
     }
 
-    /// 沿线段做物理投射，找到敌方 Health 即结算；命中自己/地面等无阵营对象时自动忽略
-    void SweepLine(Vector3 from, Vector3 to, Vector3 swingDir)
+    /// 用三轴十字线标出刃宽范围（Scene 视图调 bladeRadius 时的宽度可视化）
+    void DebugRadius(Vector3 center, float r, Color c)
     {
-        Vector3 seg = to - from;
-        if (seg.sqrMagnitude < 1e-8f) return;
-        var hits = Physics.RaycastAll(from, seg, seg.magnitude);
+        Debug.DrawLine(center + Vector3.right * r, center - Vector3.right * r, c, 0.1f);
+        Debug.DrawLine(center + Vector3.up * r, center - Vector3.up * r, c, 0.1f);
+        Debug.DrawLine(center + Vector3.forward * r, center - Vector3.forward * r, c, 0.1f);
+    }
+
+    /// 刃线检测：当前帧剑身以胶囊（轴=剑根→剑尖，半径=bladeRadius）与敌人重叠即命中
+    void BladeOverlap(Vector3 p1, Vector3 p2, Vector3 swingDir)
+    {
+        var cols = Physics.OverlapCapsule(p1, p2, bladeRadius);
+        for (int i = 0; i < cols.Length; i++)
+            SettleHit(cols[i], swingDir);
+    }
+
+    /// 扫掠检测：上一帧刃胶囊沿挥扫方向扫过帧间距（旋转扫掠以平移近似，帧间误差厘米级）。
+    /// CapsuleCast 不报告初始重叠，起始帧的重叠由上一帧的刃线检测负责，帧间衔接无缝。
+    void BladeSweep(Vector3 prevBase, Vector3 prevTip, Vector3 tipNow, Vector3 swingDir)
+    {
+        Vector3 move = tipNow - prevTip;
+        if (move.sqrMagnitude < 1e-8f) return;
+        var hits = Physics.CapsuleCastAll(prevBase, prevTip, bladeRadius, move, move.magnitude);
         for (int i = 0; i < hits.Length; i++)
-        {
-            var hp = hits[i].collider.GetComponentInParent<Health>();
-            if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) continue;
-            if (!hitThisSwing.Add(hp)) continue;    // 这个目标本刀已结算过
-            hp.TakeDamage(attackDamage, swingDir);
-        }
+            SettleHit(hits[i].collider, swingDir);
+    }
+
+    /// 命中结算：过滤阵营/已死/本刀重复；命中自己/地面等无阵营对象自动忽略
+    void SettleHit(Collider col, Vector3 swingDir)
+    {
+        var hp = col.GetComponentInParent<Health>();
+        if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
+        if (!hitThisSwing.Add(hp)) return;    // 这个目标本刀已结算过
+        hp.TakeDamage(attackDamage, swingDir);
     }
 
     /// 是否处于防御状态（举盾/收盾）——锁定移动与朝向；过渡期间按来源状态判定，仍然算防御中

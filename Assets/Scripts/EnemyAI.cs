@@ -25,6 +25,7 @@ public class EnemyAI : MonoBehaviour
     [Header("扫掠检测（手掌轨迹）")]
     public Transform handL;             // 左手掌骨（留空则自动查找 hand_l）
     public Transform handR;             // 右手掌骨（留空则自动查找 hand_r）
+    [Range(0.01f, 0.3f)] public float clawRadius = 0.08f;   // 爪击扫掠半径（球体，即判定容错度）
     public bool debugSweep = false;     // 在 Scene 视图画出手掌扫掠检测线
 
     [Header("朝向")]
@@ -105,8 +106,8 @@ public class EnemyAI : MonoBehaviour
     }
 
     /// <summary>
-    /// 手掌扫掠命中：攻击状态下每帧检测两手掌的"上一帧→当前帧"扫掠线，
-    /// 手掌轨迹真正碰到主角才结算（抬手阶段天然不判定），方向取手掌挥扫速度方向。
+    /// 手掌扫掠命中：攻击状态下每帧检测两手掌"上一帧→当前帧"的带宽度扫掠（球体半径 clawRadius），
+    /// 手掌轨迹真正扫到主角才结算（抬手阶段天然不判定），方向取手掌挥扫速度方向。
     /// 对主角一次挥爪只结算一次。
     /// </summary>
     void SweepHands()
@@ -130,7 +131,7 @@ public class EnemyAI : MonoBehaviour
         SweepHand(handR, ref prevHandR);
     }
 
-    /// 单只手掌的扫掠线检测；命中玩家方 Health 即结算一次
+    /// 单只手掌的带宽度扫掠检测（球体近似爪击体积）；命中玩家方 Health 即结算一次
     void SweepHand(Transform hand, ref Vector3 prev)
     {
         if (hand == null || playerHitDone) return;
@@ -140,22 +141,37 @@ public class EnemyAI : MonoBehaviour
 
         if (swingDir.sqrMagnitude > 0.0001f)
         {
-            var hits = Physics.RaycastAll(prev, swingDir, swingDir.magnitude);
-            for (int i = 0; i < hits.Length; i++)
+            // ① 起点球重叠：挥爪瞬间爪子已贴在玩家身上（SphereCast 不报告初始重叠，需单独补；
+            //    上一帧的终点重叠也由此处衔接覆盖）
+            var cols = Physics.OverlapSphere(prev, clawRadius);
+            for (int i = 0; i < cols.Length; i++)
+                SettleHit(cols[i], swingDir);
+
+            // ② 扫掠球：上一帧→当前帧爪子扫过的路径
+            if (!playerHitDone)
             {
-                var hp = hits[i].collider.GetComponentInParent<Health>();
-                if (hp == null || hp.IsDead || hp.team != Health.Team.Player) continue;
-                playerHitDone = true;
-                hp.TakeDamage(attackDamage, swingDir);
-                if (debugSweep) Debug.DrawLine(prev, now, Color.green, 1f);
-                break;
+                var hits = Physics.SphereCastAll(prev, clawRadius, swingDir, swingDir.magnitude);
+                for (int i = 0; i < hits.Length; i++)
+                    SettleHit(hits[i].collider, swingDir);
             }
+
+            if (playerHitDone && debugSweep) Debug.DrawLine(prev, now, Color.green, 1f);
         }
 
         if (debugSweep && swingDir.sqrMagnitude > 0.0001f)
             Debug.DrawLine(prev, now, Color.magenta, 0.1f);
 
         prev = now;
+    }
+
+    /// 命中结算：过滤阵营/已死/本次挥爪重复；通过即扣血并结束本次挥爪的判定
+    void SettleHit(Collider col, Vector3 swingDir)
+    {
+        if (playerHitDone) return;
+        var hp = col.GetComponentInParent<Health>();
+        if (hp == null || hp.IsDead || hp.team != Health.Team.Player) return;
+        playerHitDone = true;
+        hp.TakeDamage(attackDamage, swingDir);
     }
 
     /// 递归查找子孙节点（按名字）
