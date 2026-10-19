@@ -2,6 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// 受击摆动（上半身倾摆）：受击后上半身朝攻击方向倾倒，欠阻尼弹簧回摆 1~2 次归零。
+/// 晃动幅度由命中冲量（N·s = 武器速度 × 武器有效质量）决定：轻击小晃、重劈大晃；
+/// 倾角另有 maxAngle 上限兜底，强击在此饱和而不过度穿模。
 /// 只叠加到 spine/head（不碰 pelvis）——骨盆一旦旋转会带动整条腿、脚离地出戏；
 /// 上半身弯/歪时腿和脚完全不受影响。
 /// LateUpdate 在 Animator 写完骨骼姿态之后叠加倾斜（渲染前），
@@ -14,8 +16,12 @@ public class HitReaction : MonoBehaviour
     public Animator animator;
 
     [Header("受击摆动")]
-    public float impulseStrength = 200f;    // 受击冲量（deg/s），决定晃多狠
-    [Range(0f, 45f)] public float maxAngle = 14f;   // 最大倾倒角
+    public float impulseStrength = 200f;    // 满档受击冲量（deg/s）：命中冲量达到 refImpulse 时晃这么狠
+    [Range(0f, 45f)] public float maxAngle = 14f;   // 最大倾倒角（强击在此饱和，防穿模）
+
+    [Header("按命中冲量缩放（物理驱动）")]
+    public float refImpulse = 24f;          // 参考冲量（N·s）：达到该值即满档摆动
+    [Range(0f, 1f)] public float minScale = 0.35f;  // 最轻击的幅度下限（0=轻击完全不晃）
 
     [Header("弹簧手感")]
     public float stiffness = 150f;          // 刚度：越大拉回越快
@@ -46,8 +52,8 @@ public class HitReaction : MonoBehaviour
         if (hp != null) hp.OnDamaged += OnHit;
     }
 
-    /// 受击：把攻击方向转成倾倒轴，并给弹簧一个冲量
-    void OnHit(Vector3 dir)
+    /// 受击：把攻击方向转成倾倒轴，并按命中冲量（N·s）缩放晃动幅度
+    void OnHit(Vector3 dir, float impulse)
     {
         if (hp.IsDead) return;    // 死亡那一下由布娃娃接管，不做摆动
 
@@ -55,8 +61,13 @@ public class HitReaction : MonoBehaviour
         if (flat.sqrMagnitude < 0.0001f) return;
 
         axis = Vector3.Cross(Vector3.up, flat.normalized);  // 绕这根轴转 = 身体朝攻击方向倒
-        angVel += impulseStrength;                          // 冲量进弹簧
-        if (debugLog) Debug.Log("[HitReaction] 受击 dir=" + dir.ToString("F2") + " axis=" + axis.ToString("F2"));
+
+        // 幅度 = 满档冲量 × [minScale, 1]，由命中冲量相对 refImpulse 的比例决定：轻击小晃、重劈大晃
+        float scale = refImpulse > 0.0001f
+            ? Mathf.Lerp(minScale, 1f, Mathf.Clamp01(impulse / refImpulse))
+            : 1f;                                           // refImpulse=0 时退化为固定幅度（旧行为）
+        angVel += impulseStrength * scale;
+        if (debugLog) Debug.Log("[HitReaction] 受击 dir=" + dir.ToString("F2") + " impulse=" + impulse.ToString("F1") + "N·s scale=" + scale.ToString("F2"));
     }
 
     void LateUpdate()

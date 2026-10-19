@@ -17,6 +17,16 @@ public static class PropImpulse
     }
 
     /// <summary>
+    /// 命中冲量大小（N·s）：武器速度 × 武器有效质量。
+    /// 与施加到刚体上的冲量是同一个物理量，只是这里不做防弹射钳制——
+    /// 受击反馈用它当强度标尺（幅度另有 maxAngle 兜底），因此保留完整的强弱区分度。
+    /// </summary>
+    public static float Magnitude(Vector3 weaponVel, float weaponMass)
+    {
+        return weaponVel.magnitude * weaponMass;
+    }
+
+    /// <summary>
     /// 在接触点施加冲量。速度为 0、刚体缺失/kinematic、或本次攻击已推过该刚体时跳过（返回 false）。
     /// 一次攻击只对同一物体推一次，避免逐帧叠加把物体弹射上天。
     /// </summary>

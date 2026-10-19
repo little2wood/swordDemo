@@ -19,8 +19,11 @@ public class Health : MonoBehaviour
     [Header("调试")]
     public bool invincible = false;   // 锁血：只广播受击事件，不扣血（主角测试用）
 
-    /// <summary>受击时触发，参数为受力方向（世界坐标，单位向量）</summary>
-    public event Action<Vector3> OnDamaged;
+    /// <summary>
+    /// 受击时触发。参数1=受力方向（世界坐标，单位向量）；
+    /// 参数2=命中冲量（N·s，武器速度 × 武器有效质量），受击反馈按它决定晃动幅度，0 表示未知/无物理量。
+    /// </summary>
+    public event Action<Vector3, float> OnDamaged;
     /// <summary>死亡时触发，参数为致死那一下的受力方向</summary>
     public event Action<Vector3> OnDeath;
 
@@ -36,8 +39,11 @@ public class Health : MonoBehaviour
         hp = maxHp;     // 始终以 maxHp 作为初始血量，避免改了 maxHp 却不生效
     }
 
-    /// <summary>造成伤害。hitDir 为受力方向（世界坐标，会被归一化）。</summary>
-    public void TakeDamage(float amount, Vector3 hitDir)
+    /// <summary>
+    /// 造成伤害。hitDir 为受力方向（世界坐标，会被归一化）；
+    /// impulse 为命中冲量（N·s = 武器速度 × 武器有效质量），仅用于受击反馈的强度标尺，不影响扣血。
+    /// </summary>
+    public void TakeDamage(float amount, Vector3 hitDir, float impulse = 0f)
     {
         if (IsDead) return;
         if (hitDir.sqrMagnitude > 0.0001f) hitDir.Normalize();
@@ -49,13 +55,13 @@ public class Health : MonoBehaviour
             {
                 hp = 0f;
                 IsDead = true;
-                if (OnDamaged != null) OnDamaged(hitDir);
+                if (OnDamaged != null) OnDamaged(hitDir, impulse);
                 if (OnDeath != null) OnDeath(hitDir);
                 return;
             }
         }
 
-        if (OnDamaged != null) OnDamaged(hitDir);
+        if (OnDamaged != null) OnDamaged(hitDir, impulse);
     }
 
     /// <summary>回满血并复活（测试用）</summary>
