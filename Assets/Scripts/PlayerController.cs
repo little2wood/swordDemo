@@ -26,6 +26,7 @@ public class PlayerController : MonoBehaviour
     public Transform bladeBase;         // 剑根 Transform（留空则自动查找 Sword）
     public Transform bladeTip;          // 剑尖 Transform（留空则自动查找 SwordTip）
     [Range(0.01f, 0.3f)] public float bladeRadius = 0.05f;   // 剑刃半宽（胶囊半径，即判定容错度）
+    [Range(0f, 1f)] public float tipLength = 0.25f;          // 参与判定的剑尖段长度（从剑尖沿刃往回取；0=纯剑尖点，≈剑长=整条刃）
     public bool debugSweep = false;     // 在 Scene 视图画出扫掠检测线（黄=刃线，红=扫掠线）
 
     [Header("扫掠激活窗口（normalizedTime 区间；前摇/收势不判，按各刀剑尖速度曲线实测标定）")]
@@ -40,7 +41,7 @@ public class PlayerController : MonoBehaviour
 
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
     Vector3 prevTip;        // 上一渲染帧的剑尖位置（扫掠起点）
-    Vector3 prevBase;       // 上一渲染帧的剑根位置（扫掠胶囊轴的另一端）
+    Vector3 prevInner;      // 上一渲染帧剑尖段的内端点（扫掠胶囊轴的另一端）
     bool sweepInit;         // 扫掠起点是否已采样
     readonly HashSet<Health> hitThisSwing = new HashSet<Health>();  // 本刀已结算的目标（对同一目标只结算一次）
 
@@ -146,8 +147,9 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测剑刃胶囊（轴=剑根→剑尖，半径=bladeRadius）——
-    /// ① 刃线（当前帧剑身胶囊是否压在敌人身上）；② 扫掠线（上一帧刃胶囊沿挥扫方向扫过帧间距，一帧内扫过的体积，防高速穿透漏检）。
+    /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测剑尖段胶囊（轴=剑尖段内端→剑尖，半径=bladeRadius）——
+    /// ① 刃线（当前帧剑尖段是否压在敌人身上）；② 扫掠线（上一帧剑尖段沿挥扫方向扫过帧间距，防高速穿透漏检）。
+    /// 只算剑尖这一段：判定体积贴近剑尖真实轨迹，命中时机与旧版零宽线一致，受击方向不会被"挥砍起势的前推分量"带偏。
     /// 命中方向取剑尖本帧的挥扫速度方向，攻击因此"有方向"：横扫往侧向、下劈带向下分量。
     /// 对同一敌人一次挥砍只结算一次。
     /// </summary>
@@ -183,10 +185,11 @@ public class PlayerController : MonoBehaviour
 
         Vector3 tipNow = bladeTip.position;
         Vector3 baseNow = bladeBase != null ? bladeBase.position : prevTip;
+        Vector3 innerNow = TipInner(tipNow, baseNow);       // 剑尖段内端点（只取剑尖 tipLength 这一段）
         if (!sweepInit)
         {
             prevTip = tipNow;       // 首帧只记录起点，不做检测
-            prevBase = baseNow;
+            prevInner = innerNow;
             sweepInit = true;
             return;
         }
@@ -197,19 +200,28 @@ public class PlayerController : MonoBehaviour
         if (swingDir.sqrMagnitude < 0.0001f)
             swingDir = transform.forward;
 
-        BladeOverlap(baseNow, tipNow, swingDir);           // ① 刃线：当前帧剑身胶囊与敌人重叠
-        BladeSweep(prevBase, prevTip, tipNow, swingDir);   // ② 扫掠线：上一帧刃胶囊沿挥扫方向扫过帧间距
+        BladeOverlap(innerNow, tipNow, swingDir);           // ① 刃线：当前帧剑尖段胶囊与敌人重叠
+        BladeSweep(prevInner, prevTip, tipNow, swingDir);   // ② 扫掠线：上一帧剑尖段沿挥扫方向扫过帧间距
 
         if (debugSweep)
         {
-            Debug.DrawLine(baseNow, tipNow, Color.yellow, 0.1f);
+            Debug.DrawLine(innerNow, tipNow, Color.yellow, 0.1f);
             Debug.DrawLine(prevTip, tipNow, Color.red, 0.1f);
-            DebugRadius(baseNow, bladeRadius, Color.yellow);
+            DebugRadius(innerNow, bladeRadius, Color.yellow);
             DebugRadius(tipNow, bladeRadius, Color.red);
         }
 
         prevTip = tipNow;
-        prevBase = baseNow;
+        prevInner = innerNow;
+    }
+
+    /// 剑尖段内端点：从剑尖沿刃方向往剑根退 tipLength（不超过剑长，tipLength=0 时退化为剑尖点）
+    Vector3 TipInner(Vector3 tipPos, Vector3 basePos)
+    {
+        Vector3 bladeDir = tipPos - basePos;
+        float len = bladeDir.magnitude;
+        if (len < 1e-5f) return tipPos;
+        return tipPos - bladeDir / len * Mathf.Min(tipLength, len);
     }
 
     /// 用三轴十字线标出刃宽范围（Scene 视图调 bladeRadius 时的宽度可视化）
@@ -220,7 +232,7 @@ public class PlayerController : MonoBehaviour
         Debug.DrawLine(center + Vector3.forward * r, center - Vector3.forward * r, c, 0.1f);
     }
 
-    /// 刃线检测：当前帧剑身以胶囊（轴=剑根→剑尖，半径=bladeRadius）与敌人重叠即命中
+    /// 刃线检测：当前帧剑尖段以胶囊（轴=剑尖段内端→剑尖，半径=bladeRadius）与敌人重叠即命中
     void BladeOverlap(Vector3 p1, Vector3 p2, Vector3 swingDir)
     {
         var cols = Physics.OverlapCapsule(p1, p2, bladeRadius);
@@ -228,13 +240,13 @@ public class PlayerController : MonoBehaviour
             SettleHit(cols[i], swingDir);
     }
 
-    /// 扫掠检测：上一帧刃胶囊沿挥扫方向扫过帧间距（旋转扫掠以平移近似，帧间误差厘米级）。
+    /// 扫掠检测：上一帧剑尖段胶囊沿挥扫方向扫过帧间距（旋转扫掠以平移近似，帧间误差厘米级）。
     /// CapsuleCast 不报告初始重叠，起始帧的重叠由上一帧的刃线检测负责，帧间衔接无缝。
-    void BladeSweep(Vector3 prevBase, Vector3 prevTip, Vector3 tipNow, Vector3 swingDir)
+    void BladeSweep(Vector3 prevInner, Vector3 prevTip, Vector3 tipNow, Vector3 swingDir)
     {
         Vector3 move = tipNow - prevTip;
         if (move.sqrMagnitude < 1e-8f) return;
-        var hits = Physics.CapsuleCastAll(prevBase, prevTip, bladeRadius, move, move.magnitude);
+        var hits = Physics.CapsuleCastAll(prevInner, prevTip, bladeRadius, move, move.magnitude);
         for (int i = 0; i < hits.Length; i++)
             SettleHit(hits[i].collider, swingDir);
     }
