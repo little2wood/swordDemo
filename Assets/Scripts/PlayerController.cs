@@ -27,6 +27,11 @@ public class PlayerController : MonoBehaviour
     public Transform bladeTip;          // 剑尖 Transform（留空则自动查找 SwordTip）
     public bool debugSweep = false;     // 在 Scene 视图画出扫掠检测线（黄=刃线，红=扫掠线）
 
+    [Header("扫掠激活窗口（normalizedTime 区间；前摇/收势不判，按各刀剑尖速度曲线实测标定）")]
+    public Vector2 windowA = new Vector2(0.40f, 0.75f);   // A：挥砍爆发 0.46~0.65
+    public Vector2 windowB = new Vector2(0.35f, 0.65f);   // B：挥砍爆发 0.375~0.56
+    public Vector2 windowC = new Vector2(0.28f, 0.45f);   // C：前摇很长(0~0.30)，爆发仅 0.31~0.33
+
     Rigidbody rb;
     Animator anim;
     PlayerInput input;
@@ -139,7 +144,7 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
-    /// 扫掠命中：出刀状态下每帧检测两条线段——
+    /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测两条线段——
     /// ① 刃线（剑根→剑尖，剑身当前是否插在敌人身上）；② 扫掠线（上一帧剑尖→当前剑尖，一帧内扫过的路径，防高速穿透漏检）。
     /// 命中方向取剑尖本帧的挥扫速度方向，攻击因此"有方向"：横扫往侧向、下劈带向下分量。
     /// 对同一敌人一次挥砍只结算一次。
@@ -163,6 +168,15 @@ public class PlayerController : MonoBehaviour
             lastSwingHash = h;
             sweepInit = false;
             hitThisSwing.Clear();
+        }
+
+        // 进度窗口：前摇/收势阶段剑尖轨迹不算攻击，窗口外不检测。
+        // 回到窗口内的第一帧会因 sweepInit=false 重新以当前剑尖为扫掠起点，前摇轨迹不会被连成扫掠线。
+        Vector2 w = h == AH ? windowA : h == BH ? windowB : windowC;
+        if (st.normalizedTime < w.x || st.normalizedTime > w.y)
+        {
+            sweepInit = false;
+            return;
         }
 
         Vector3 tipNow = bladeTip.position;
