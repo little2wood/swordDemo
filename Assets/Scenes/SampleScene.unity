@@ -1078,9 +1078,14 @@ MonoBehaviour:
   - {fileID: 1033393850}
   deathImpulse: 10
   upwardBias: 0.7
-  randomTorque: 9
+  randomTorque: 4
   deathDrag: 1
   deathSleepThreshold: 0.08
+  localImpulse: 12
+  falloffRadius: 1.2
+  falloffMin: 0.5
+  refImpulse: 28
+  minScale: 0.35
   ragdollLayer: 9
   ignoreSelfCollision: 1
   retargetCameraOnDeath: 1
@@ -4701,7 +4706,7 @@ MonoBehaviour:
   moveSpeed: 6
   turnSpeed: 540
   facingOffset: 0
-  attackDamage: 1
+  attackDamage: 20
   bladeBase: {fileID: 0}
   bladeTip: {fileID: 0}
   bladeRadius: 0.05
@@ -4764,9 +4769,14 @@ MonoBehaviour:
   - {fileID: 1869625249}
   deathImpulse: 10
   upwardBias: 0.7
-  randomTorque: 9
+  randomTorque: 4
   deathDrag: 1
   deathSleepThreshold: 0.08
+  localImpulse: 12
+  falloffRadius: 1.2
+  falloffMin: 0.5
+  refImpulse: 28
+  minScale: 0.35
   ragdollLayer: 9
   ignoreSelfCollision: 1
   retargetCameraOnDeath: 1

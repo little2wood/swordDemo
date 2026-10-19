@@ -24,8 +24,12 @@ public class Health : MonoBehaviour
     /// 参数2=命中冲量（N·s，武器速度 × 武器有效质量），受击反馈按它决定晃动幅度，0 表示未知/无物理量。
     /// </summary>
     public event Action<Vector3, float> OnDamaged;
-    /// <summary>死亡时触发，参数为致死那一下的受力方向</summary>
-    public event Action<Vector3> OnDeath;
+    /// <summary>
+    /// 死亡时触发。参数1=致死那一下的受力方向（单位向量）；
+    /// 参数2=致死那一下的命中冲量（N·s），布娃娃据此决定飞多远（0 表示未知，按满档处理）；
+    /// 参数3=命中点（世界坐标），布娃娃据此决定"被砍中的是哪个部位"（未传入时为 Vector3.zero）。
+    /// </summary>
+    public event Action<Vector3, float, Vector3> OnDeath;
 
     public float CurrentHp
     {
@@ -41,9 +45,10 @@ public class Health : MonoBehaviour
 
     /// <summary>
     /// 造成伤害。hitDir 为受力方向（世界坐标，会被归一化）；
-    /// impulse 为命中冲量（N·s = 武器速度 × 武器有效质量），仅用于受击反馈的强度标尺，不影响扣血。
+    /// impulse 为命中冲量（N·s = 武器速度 × 武器有效质量），仅用于受击反馈的强度标尺，不影响扣血；
+    /// point 为命中点（世界坐标），用于布娃娃判断被击中的部位（不传则退化为整体冲量）。
     /// </summary>
-    public void TakeDamage(float amount, Vector3 hitDir, float impulse = 0f)
+    public void TakeDamage(float amount, Vector3 hitDir, float impulse = 0f, Vector3 point = default(Vector3))
     {
         if (IsDead) return;
         if (hitDir.sqrMagnitude > 0.0001f) hitDir.Normalize();
@@ -56,7 +61,7 @@ public class Health : MonoBehaviour
                 hp = 0f;
                 IsDead = true;
                 if (OnDamaged != null) OnDamaged(hitDir, impulse);
-                if (OnDeath != null) OnDeath(hitDir);
+                if (OnDeath != null) OnDeath(hitDir, impulse, point);
                 return;
             }
         }

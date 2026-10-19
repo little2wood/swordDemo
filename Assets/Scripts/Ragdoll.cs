@@ -13,11 +13,19 @@ public class Ragdoll : MonoBehaviour
     public List<Rigidbody> parts = new List<Rigidbody>();
 
     [Header("死亡表现（demo 夸张化）")]
-    public float deathImpulse = 10f;      // 水平方向速度改变量 m/s
-    public float upwardBias = 0.7f;       // 向上分量（相对水平速度的比例）
+    public float deathImpulse = 10f;      // 飞出速度改变量 m/s（方向直接取命中冲量方向，整体基础，会被距离衰减）
     public float randomTorque = 9f;       // 随机角速度，让翻滚更夸张
     public float deathDrag = 1.0f;        // 布娃娃阻尼，避免滑太久
     public float deathSleepThreshold = 0.08f;   // 提高休眠阈值，让静止更快到来
+
+    [Header("按命中部位分配（砍哪飞哪）")]
+    public float localImpulse = 12f;      // 命中点局部冲量（m/s）：施加在被砍中的那个部件上
+    public float falloffRadius = 1.2f;    // 距离衰减半径：离命中点这么远时速度降到 falloffMin
+    [Range(0f, 1f)] public float falloffMin = 0.5f;   // 最远部件保留的速度比例（近快远慢 → 以命中点为中心旋转）
+
+    [Header("强度随命中冲量（与受击摆动同一标尺）")]
+    public float refImpulse = 28f;        // 参考冲量（N·s）：达到该值即满档飞出
+    [Range(0f, 1f)] public float minScale = 0.35f;    // 最轻击的飞出强度下限（0=轻杀几乎不飞）
 
     [Header("稳定性")]
     public int ragdollLayer = 9;                // 布娃娃专用层（该层内部互不碰撞）
@@ -159,8 +167,14 @@ public class Ragdoll : MonoBehaviour
         if (health != null) health.OnDeath -= Activate;
     }
 
-    /// <summary>死亡回调：切到物理布娃娃并施加冲量。hitDir 为受力方向。</summary>
-    public void Activate(Vector3 hitDir)
+    /// <summary>
+    /// 死亡回调：切到物理布娃娃并施加冲量。
+    /// hitDir=受力方向；impulse=致死那一下的命中冲量（N·s，决定飞多远）；point=命中点（决定飞散姿态）。
+    /// 有命中点时按部位分配：整体速度按到命中点的距离衰减（近快远慢 → 自然旋转），
+    /// 并在被砍中的那个部件上按接触点施加局部冲量（力臂自动产生扭矩）→ 砍腿腿飞、砍头上半身后仰。
+    /// 没有命中点时退化为整体固定冲量 + 随机扭矩（旧行为）；impulse=0（未知）时按满档处理。
+    /// </summary>
+    public void Activate(Vector3 hitDir, float impulse, Vector3 point)
     {
         if (active) return;
         active = true;
@@ -199,18 +213,64 @@ public class Ragdoll : MonoBehaviour
         }
 
         // 4. 施加冲量（VelocityChange：不依赖质量，效果直观可控）
+        // 方向直接取命中冲量的方向（hitDir = 武器速度方向归一化，与冲量矢量同源），不再压平、不再叠加向上分量：
+        // 上挑真的把尸体挑起、下劈真的把它压向地面，飞出方向完全由这一击怎么打决定
         Vector3 dir = hitDir;
-        dir.y = 0f;
-        if (dir.sqrMagnitude < 0.0001f) dir = -transform.forward;
+        if (dir.sqrMagnitude < 0.0001f) dir = -transform.forward;   // 没有方向时的兜底
         dir.Normalize();
-        Vector3 v = dir * deathImpulse + Vector3.up * (deathImpulse * upwardBias);
+
+        // 飞出强度由致死那一下的命中冲量决定：轻刀软倒、重劈飞远（impulse=0 表示未知，按满档）
+        float scale = impulse > 0.0001f
+            ? Mathf.Lerp(minScale, 1f, Mathf.Clamp01(impulse / refImpulse))
+            : 1f;
+
+        Vector3 v = dir * deathImpulse * scale;
+
+        bool hasPoint = point.sqrMagnitude > 0.0001f;
+        Rigidbody hitPart = hasPoint ? NearestPart(point) : null;   // 被砍中的部位
 
         foreach (var p in parts)
         {
             if (p == null) continue;
-            p.AddForce(v, ForceMode.VelocityChange);
+
+            // 整体速度按到命中点的距离衰减：近的部件快、远的慢，身体因此绕命中点旋转
+            float w = 1f;
+            if (hasPoint)
+                w = Mathf.Lerp(1f, falloffMin, Mathf.Clamp01(DistanceToPart(p, point) / falloffRadius));
+
+            p.AddForce(v * w, ForceMode.VelocityChange);
             p.AddTorque(Random.insideUnitSphere * randomTorque, ForceMode.VelocityChange);
         }
+
+        // 被砍中的部位：在接触点施加局部冲量，力臂自动产生扭矩（砍腿踢飞腿、砍头把上半身掀翻）
+        if (hitPart != null)
+        {
+            Vector3 localV = dir * localImpulse * scale;
+            hitPart.AddForceAtPosition(localV, point, ForceMode.VelocityChange);
+        }
+    }
+
+    /// 找出离命中点最近的骨骼部件（即被砍中的部位）：按碰撞体表面最近点判定，
+    /// 比用质心准确（胶囊质心偏离骨骼原点，容易把"砍左脚"判成右脚）
+    Rigidbody NearestPart(Vector3 point)
+    {
+        Rigidbody best = null;
+        float bestD = float.MaxValue;
+        foreach (var p in parts)
+        {
+            if (p == null) continue;
+            float d = DistanceToPart(p, point);
+            if (d < bestD) { bestD = d; best = p; }
+        }
+        return best;
+    }
+
+    /// 部件到命中点的距离：取碰撞体表面最近点（无碰撞体时退回质心）
+    float DistanceToPart(Rigidbody p, Vector3 point)
+    {
+        var col = p.GetComponent<Collider>();
+        Vector3 closest = col != null ? col.ClosestPoint(point) : p.worldCenterOfMass;
+        return Vector3.Distance(closest, point);
     }
 
     Transform FindPelvis()

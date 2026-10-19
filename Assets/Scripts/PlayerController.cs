@@ -276,7 +276,7 @@ public class PlayerController : MonoBehaviour
         var hp = col.GetComponentInParent<Health>();
         if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
         if (!hitThisSwing.Add(hp)) return;    // 这个目标本刀已结算过
-        hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(tipVel, bladeMass));   // 冲量决定受击晃动幅度
+        hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(tipVel, bladeMass), point);   // 冲量决定晃动幅度，命中点决定布娃娃飞散姿态
     }
 
     /// 是否处于防御状态（举盾/收盾）——锁定移动与朝向；过渡期间按来源状态判定，仍然算防御中

@@ -62,9 +62,11 @@ public class HitReaction : MonoBehaviour
 
         axis = Vector3.Cross(Vector3.up, flat.normalized);  // 绕这根轴转 = 身体朝攻击方向倒
 
-        // 幅度 = 满档冲量 × [minScale, 1]，由命中冲量相对 refImpulse 的比例决定：轻击小晃、重劈大晃
+        // 幅度按"拍平后"的冲量大小计算：倾覆力矩只来自水平分量（垂直分量是压缩，不产生倾倒），
+        // 所以带倾角的劈砍晃得更轻、纯横扫最狠（dir 传入时已归一化，sqrt(x²+z²) 即水平分量占比）
+        float horizontal = impulse * Mathf.Sqrt(dir.x * dir.x + dir.z * dir.z);
         float scale = refImpulse > 0.0001f
-            ? Mathf.Lerp(minScale, 1f, Mathf.Clamp01(impulse / refImpulse))
+            ? Mathf.Lerp(minScale, 1f, Mathf.Clamp01(horizontal / refImpulse))
             : 1f;                                           // refImpulse=0 时退化为固定幅度（旧行为）
         angVel += impulseStrength * scale;
         if (debugLog) Debug.Log("[HitReaction] 受击 dir=" + dir.ToString("F2") + " impulse=" + impulse.ToString("F1") + "N·s scale=" + scale.ToString("F2"));

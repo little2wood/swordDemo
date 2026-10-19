@@ -187,7 +187,7 @@ public class EnemyAI : MonoBehaviour
         var hp = col.GetComponentInParent<Health>();
         if (hp == null || hp.IsDead || hp.team != Health.Team.Player) return;
         playerHitDone = true;
-        hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(handVel, clawMass));   // 冲量决定受击晃动幅度
+        hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(handVel, clawMass), point);   // 冲量决定晃动幅度，命中点决定布娃娃飞散姿态
     }
 
     /// 递归查找子孙节点（按名字）
