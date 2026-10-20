@@ -23,6 +23,11 @@ public class PlayerInput : MonoBehaviour
     /// <summary>右键当前是否按住（防御意图）。持续状态，不是单帧事件。</summary>
     public bool GuardHeld { get; private set; }
 
+    /// <summary>
+    /// 投盾请求缓冲：空格按下瞬间置位，保持到被消费为止（与攻击缓冲同理，避免落在无物理步的帧上丢输入）。
+    /// </summary>
+    public bool ThrowBuffered { get; private set; }
+
     void Start()
     {
         LockCursor();
@@ -60,6 +65,17 @@ public class PlayerInput : MonoBehaviour
 
         // 鼠标右键：按住即防御，松开即收盾
         GuardHeld = mouse != null && mouse.rightButton.isPressed;
+
+        // 空格：按下瞬间 → 置入投盾缓冲（由 PlayerController 消费）
+        if (kb != null && kb.spaceKey.wasPressedThisFrame) ThrowBuffered = true;
+    }
+
+    /// <summary>消费投盾请求：返回是否存在待处理的按键，并清除缓冲。</summary>
+    public bool TakeThrowRequest()
+    {
+        bool v = ThrowBuffered;
+        ThrowBuffered = false;
+        return v;
     }
 
     /// <summary>消费攻击请求：返回是否存在待处理的点击，并清除缓冲。</summary>

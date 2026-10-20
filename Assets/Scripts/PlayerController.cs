@@ -29,6 +29,9 @@ public class PlayerController : MonoBehaviour
     [Range(0f, 1f)] public float tipLength = 0.25f;          // 参与判定的剑尖段长度（从剑尖沿刃往回取；0=纯剑尖点，≈剑长=整条刃）
     public bool debugSweep = false;     // 在 Scene 视图画出扫掠检测线（黄=刃线，红=扫掠线）
 
+    [Header("盾牌（空格甩出）")]
+    public ShieldThrow shield;          // 留空自动查找自身子树里的 ShieldThrow
+
     [Header("击飞可互动物体（Prop 层：箱子等）")]
     public LayerMask propLayer;         // 可互动物体所在层（Inspector 选 Prop）；主角/敌人/平台不在该层，天然不受影响
     public float bladeMass = 2f;        // 剑的有效质量：冲量 = 剑尖速度(m/s) × 该质量(kg)，单位 N·s
@@ -83,11 +86,20 @@ public class PlayerController : MonoBehaviour
                 if (bladeTip == null) bladeTip = tip != null ? tip : sword;
             }
         }
+        // 盾：留空则自动取子树里的 ShieldThrow（脚本挂在盾牌对象上）
+        if (shield == null) shield = GetComponentInChildren<ShieldThrow>(true);
     }
 
     void Update()
     {
         SweepHit();     // 扫掠检测跟动画帧走（Animator 在 Update 驱动），剑尖采样按渲染帧稳定推进
+
+        // ---- 投盾：空格。盾不在手上时丢弃这次输入（找回的办法要等后续步骤） ----
+        if (input.TakeThrowRequest() && shield != null && shield.InHand)
+        {
+            Vector3 aim = cam != null ? cam.transform.forward : transform.forward;
+            shield.Throw(aim.normalized);   // 盾内部按 flattenAim 决定是否用完整三维前向
+        }
     }
 
     void FixedUpdate()
