@@ -4,8 +4,9 @@ using UnityEngine;
 /// 敌人的弹反表现（配合 PlayerParry 使用）：
 /// ① Parried —— 被弹反：Animator 时间缩放到 slowScale（慢 10 倍），播破防动画（复用主角的 Idle_Shield_Break）；
 ///    以现实时间等待玩家 parryHoldTime 秒，玩家点左键就进 ②，没点就直接恢复、无事发生。
-/// ② Launched —— 被反击撞飞：时间恢复正常，沿玩家面朝方向抛出 launchDistance 米，播 Hit_Knockback；
-///    动画播完还没落地就定格在最后一帧。
+/// ② Launched —— 被反击平推：时间恢复正常，沿玩家面朝方向贴地滑出 launchDistance 米
+///    （速度只有水平分量、没有垂直分量，不再抛物线弹飞），播 Hit_Knockback；
+///    动画速度自适应，滑停那一刻刚好播完。
 /// ③ Landing —— 落地：播 LayToIdle，播完回到正常状态，AI 解锁。
 /// 全程 IsLocked=true，EnemyAI 借此停手：不再移动、不再攻击、手掌不再结算伤害。
 /// </summary>
@@ -24,15 +25,16 @@ public class EnemyStagger : MonoBehaviour
     [Tooltip("等待玩家反击的现实时间（秒，用 unscaledTime 计时，不受慢动作影响）")]
     public float parryHoldTime = 3f;
 
-    [Header("撞飞")]
-    [Tooltip("撞飞的水平距离（米）")]
+    [Header("平推")]
+    [Tooltip("平推滑行的水平距离（米）")]
     public float launchDistance = 3f;
-    [Tooltip("撞飞抛物线的最高点比起飞点高多少（米）")]
-    public float launchArcHeight = 0.8f;
-    [Tooltip("落地检测：脚底离地这么多米以内就算落地（米）。调大=提前落地、飞得近")]
-    public float groundProbe = 0.12f;
-    public LayerMask groundLayer = ~0;
-    [Tooltip("兜底：起飞后超过这么久无论如何算落地（防射线探空）")]
+    [Tooltip("滑出这段距离所用的时长（秒）：平推速度 = 距离 / 时长")]
+    public float launchTime = 0.8f;
+    [Tooltip("撞飞动画 clip 的长度（秒，Hit_Knockback=0.833）：用来把动画速度对齐到滑行时长")]
+    public float knockClipLength = 0.833f;
+    [Tooltip("动画速度的自适应范围：滑停前把动画播完，别提前定格僵住")]
+    public Vector2 knockSpeedRange = new Vector2(0.25f, 3f);
+    [Tooltip("兜底：平推开始超过这么久仍未结束就强制进落地")]
     public float launchTimeout = 2.5f;
     [Tooltip("兜底：LayToIdle 播这么久还没播完就强行恢复")]
     public float landingTimeout = 3f;
@@ -46,8 +48,9 @@ public class EnemyStagger : MonoBehaviour
 
     Phase phase = Phase.None;
     float phaseStart;       // unscaled 计时起点
-    float startY;           // 起飞高度：落地判定用
-    bool savedGravity;      // 原本是否受重力（撞飞期间强制开，恢复时还原）
+    Vector3 launchVelocity; // 平推的水平速度（滑行期间全程锁定，摩擦/穿透修正都偷不走）
+    float slideTimer;       // 滑行剩余时长（按物理步扣，扣完即落地）
+    bool savedGravity;      // 原本是否受重力（平推期间强制开，恢复时还原）
 
     public Phase Current { get { return phase; } }
     /// <summary>被弹反/撞飞/起身期间为 true：EnemyAI 据此完全停手。</summary>
@@ -78,14 +81,13 @@ public class EnemyStagger : MonoBehaviour
         }
     }
 
-    /// <summary>玩家反击：时间恢复正常，沿 dir（玩家面朝方向）被撞飞。</summary>
+    /// <summary>玩家反击：时间恢复正常，沿 dir（玩家面朝方向）被平推出去。</summary>
     public void Launch(Vector3 dir)
     {
         if (phase != Phase.Parried) return;   // 只有在弹反硬直中才吃这一下
 
         phase = Phase.Launched;
         phaseStart = Time.unscaledTime;
-        startY = transform.position.y;
 
         if (animator != null)
         {
@@ -95,7 +97,7 @@ public class EnemyStagger : MonoBehaviour
         if (body != null)
         {
             savedGravity = body.useGravity;
-            body.useGravity = true;           // 抛物线交给物理，落地由射线判定
+            body.useGravity = true;           // 重力保留：贴着地面滑行
             body.angularVelocity = Vector3.zero;
 
             Vector3 flat = dir;
@@ -105,11 +107,13 @@ public class EnemyStagger : MonoBehaviour
             if (flat.sqrMagnitude < 1e-6f) flat = Vector3.forward;
             flat.Normalize();
 
-            // 同高抛物线：弧高定 vUp → 飞行时间 T → 水平速度 = 距离 / T（落点即 launchDistance）
-            float g = Mathf.Max(0.01f, Physics.gravity.magnitude);
-            float vUp = Mathf.Sqrt(2f * g * Mathf.Max(0.01f, launchArcHeight));
-            float t = 2f * vUp / g;
-            body.linearVelocity = flat * (launchDistance / t) + Vector3.up * vUp;
+            // 平推：去掉速度的垂直分量，水平恒速滑出 launchDistance 米。
+            // 弹反是贴身触发的，先沿滑行方向挪开一点，摆脱与玩家的初始重叠
+            float slideTime = Mathf.Max(0.1f, launchTime);
+            launchVelocity = flat * (launchDistance / slideTime);
+            body.position += flat * 0.12f;
+            slideTimer = slideTime;
+            body.linearVelocity = new Vector3(launchVelocity.x, 0f, launchVelocity.z);
         }
     }
 
@@ -123,13 +127,18 @@ public class EnemyStagger : MonoBehaviour
                 break;
 
             case Phase.Launched:
-                // 撞飞动画播完还没落地 → 定格在最后一帧（把 Animator 时间停掉）
+                // 贴地平推：滑满时长（= 滑满 launchDistance）即落地，不再做抛物线落地判定
+                // 动画速度跟着剩余滑行时间走：滑停那一刻刚好播完，不提前定格僵住
                 if (animator != null)
                 {
                     var st = animator.GetCurrentAnimatorStateInfo(0);
-                    if (st.shortNameHash == KnockH && st.normalizedTime >= 1f) animator.speed = 0f;
+                    if (st.shortNameHash == KnockH)
+                    {
+                        float remainAnim = (1f - Mathf.Clamp01(st.normalizedTime)) * knockClipLength;
+                        animator.speed = Mathf.Clamp(remainAnim / Mathf.Max(0.06f, slideTimer), knockSpeedRange.x, knockSpeedRange.y);
+                    }
                 }
-                if (ReachedGround() || Time.unscaledTime - phaseStart >= launchTimeout) Land();
+                if (slideTimer <= 0f || Time.unscaledTime - phaseStart >= launchTimeout) Land();
                 break;
 
             case Phase.Landing:
@@ -152,7 +161,7 @@ public class EnemyStagger : MonoBehaviour
         Stop();
         if (animator != null)
         {
-            animator.speed = 1f;              // 解除可能的定格
+            animator.speed = 1f;              // 解除自适应速度
             animator.SetTrigger(GroundedId);
         }
     }
@@ -173,25 +182,13 @@ public class EnemyStagger : MonoBehaviour
         }
     }
 
-    /// 落地判定：正在下落 +（探到地面 或 已回到起飞高度）
-    bool ReachedGround()
+    void FixedUpdate()
     {
-        if (body == null) return true;
-        if (body.linearVelocity.y > 0f) return false;      // 还在上升
+        if (phase != Phase.Launched || body == null) return;
 
-        Vector3 origin = transform.position + Vector3.up * 0.15f;
-        var hits = Physics.RaycastAll(origin, Vector3.down, groundProbe + 0.15f, groundLayer);
-        for (int i = 0; i < hits.Length; i++)
-        {
-            if (IsSelf(hits[i].transform)) continue;
-            return true;
-        }
-        return transform.position.y <= startY + 0.02f;     // 射线探空时按起飞高度兜底
-    }
-
-    bool IsSelf(Transform t)
-    {
-        return t == transform || t.IsChildOf(transform);
+        // 全程锁定水平速度：摩擦、穿透修正都改变不了平推轨迹；竖直方向留给重力和地面
+        body.linearVelocity = new Vector3(launchVelocity.x, body.linearVelocity.y, launchVelocity.z);
+        slideTimer -= Time.fixedDeltaTime;
     }
 
     void Stop()
