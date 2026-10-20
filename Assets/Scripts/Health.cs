@@ -31,6 +31,14 @@ public class Health : MonoBehaviour
     /// </summary>
     public event Action<Vector3, float, Vector3> OnDeath;
 
+    /// <summary>
+    /// 扣血前的拦截询问（供主角格挡这类"抵消伤害"的玩法订阅）。
+    /// 参数1=受力方向（世界坐标，已归一化）；参数2=本次伤害量。
+    /// 返回 true 表示这一次伤害被吸收：不扣血、不致死，但仍会广播 OnDamaged ——
+    /// 受击反馈（HitReaction）照常演出，只是血不掉。
+    /// </summary>
+    public event Func<Vector3, float, bool> OnDamageIntercept;
+
     public float CurrentHp
     {
         get { return hp; }
@@ -52,6 +60,13 @@ public class Health : MonoBehaviour
     {
         if (IsDead) return;
         if (hitDir.sqrMagnitude > 0.0001f) hitDir.Normalize();
+
+        // 格挡之类的"抵消伤害"：吸收时不扣血、不致死，但受击反馈照常广播
+        if (!invincible && OnDamageIntercept != null && OnDamageIntercept(hitDir, amount))
+        {
+            if (OnDamaged != null) OnDamaged(hitDir, impulse);
+            return;
+        }
 
         if (!invincible)
         {

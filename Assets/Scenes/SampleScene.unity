@@ -4438,6 +4438,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1076808060}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808062}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808061}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1865327341}
@@ -4814,7 +4820,7 @@ MonoBehaviour:
   worldHeight: 0.16
   worldOffset: {x: 0, y: 2.2, z: 0}
   billboard: 1
-  screenPos: {x: 24, y: 24}
+  screenPos: {x: 24, y: 56}
   screenSize: {x: 320, y: 26}
   fillColor: {r: 0.18, g: 0.78, b: 0.28, a: 1}
   backColor: {r: 0, g: 0, b: 0, a: 0.65}
@@ -4840,6 +4846,46 @@ MonoBehaviour:
   stiffness: 150
   damping: 12
   debugLog: 0
+--- !u!114 &1076808061
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c6a990848e40d054783d57d0b6269042, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GuardBar
+  guard: {fileID: 1076808062}
+  screenPos: {x: 24, y: 24}
+  screenSize: {x: 320, y: 22}
+  fillColor: {r: 1, g: 0.55, b: 0.1, a: 1}
+  backColor: {r: 0, g: 0, b: 0, a: 0.65}
+  breakColor: {r: 0.5, g: 0.22, b: 0.05, a: 1}
+--- !u!114 &1076808062
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f04e753b2d9110a41b12f175a2769a0a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerGuard
+  health: {fileID: 1076808057}
+  shield: {fileID: 1448650017}
+  animator: {fileID: 1076808053}
+  maxGuard: 100
+  guardRegenTime: 3
+  blockArcDeg: 120
+  guardCostPerDamage: 1
+  minGuardCost: 1
+  requireShieldInHand: 1
+  breakStunTime: 1.067
 --- !u!4 &1079367453 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7378292883642932892, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
@@ -6219,6 +6265,16 @@ MonoBehaviour:
   shieldMass: 4
   maxThrowSpeed: 22
   throwDamage: 5
+  recoverSpeed: 18
+  recoverArc: 0.8
+  recoverSnapDist: 0.12
+  breakReleaseFrame: 9
+  breakClipFps: 30
+  breakClipLength: 1.067
+  breakForceTime: 1.5
+  breakSpeedScale: 1
+  breakMinSpeed: 3
+  breakSpinScale: 1
   gravityScale: 0.4
   flightDrag: 0.02
   maxSpeed: 40

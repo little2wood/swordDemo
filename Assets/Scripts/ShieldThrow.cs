@@ -48,6 +48,21 @@ public class ShieldThrow : MonoBehaviour
     [Tooltip("回收时把盾挂在 socket 之前，先跟到离 socket 这么近")]
     public float recoverSnapDist = 0.12f;
 
+    [Header("破防掉盾")]
+    [Tooltip("破防动画播到第几帧时盾脱手（按 breakClipFps 换算成时间）")]
+    public float breakReleaseFrame = 9f;
+    public float breakClipFps = 30f;
+    [Tooltip("破防动画 clip 长度（秒）：把\"第几帧\"换算成状态内进度用（Idle_Shield_Break = 1.0667s）")]
+    public float breakClipLength = 1.067f;
+    [Tooltip("兜底：破防触发后超过这么久无论如何都把盾甩出去（防动画状态没接上）")]
+    public float breakForceTime = 1.5f;
+    [Tooltip("按动画采样速度换算的出手速度再乘这个系数（1=完全按动画的手速飞出去）")]
+    public float breakSpeedScale = 1f;
+    [Tooltip("采样到的手速过小（动画那几帧手几乎没动）时的兜底速度")]
+    public float breakMinSpeed = 3f;
+    [Tooltip("按动画采样角速度换算的自旋再乘这个系数")]
+    public float breakSpinScale = 1f;
+
     [Header("飞行物理")]
     [Range(0f, 1f)] public float gravityScale = 0.4f;   // 重力缩放（0=直线，1=完整抛物线）
     public float flightDrag = 0.02f;                    // 线性阻尼（飞行衰减）
@@ -79,6 +94,19 @@ public class ShieldThrow : MonoBehaviour
     Quaternion returnFromRot;
     float returnT;
     float returnDuration;
+
+    // 破防掉盾：动画出手帧之前盾仍挂在 socket 上跟着动画走，逐帧采样它的世界速度/角速度，
+    // 到出手帧时把这些"当时盾牌的物理量"原样交给刚体 —— 飞出去的方向和速度就是动画甩出来的样子
+    Animator breakAnimator;
+    static readonly int BreakStateH = Animator.StringToHash("Idle_Shield_Break");
+    bool breakPending;
+    float breakT;
+    Vector3 samplePrevPos;
+    Quaternion samplePrevRot;
+    Vector3 sampleVel;
+    Vector3 sampleAngVel;
+    bool sampleInit;
+    bool fromBreak;      // 本次飞行是"被打掉"而不是主动投掷：不触发投掷观察期
 
     // 一次飞行内的命中去重：同一个箱子/同一个敌人只结算一次，避免弹跳反复触发
     readonly HashSet<Rigidbody> hitThisThrow = new HashSet<Rigidbody>();
@@ -197,6 +225,128 @@ public class ShieldThrow : MonoBehaviour
         SetIdle();
     }
 
+    // ---------- 破防掉盾 ----------
+
+    /// <summary>
+    /// 破防：盾不立刻飞走，先跟着破防动画（Idle_Shield_Break）走到出手帧，
+    /// 在那一帧按"当时盾牌的物理量"（逐帧采样出来的线速度 + 角速度）原样交给物理。
+    /// 方向/速度完全由动画决定 —— 动画怎么甩，盾就怎么飞。
+    /// 只在盾还在手上时生效（盾已被投出去的情况下破防就不掉盾）。
+    /// </summary>
+    public bool BeginBreakThrow()
+    {
+        if (Current != State.InHand) return false;
+
+        if (breakAnimator == null)
+            breakAnimator = owner != null ? owner.GetComponent<Animator>() : GetComponentInParent<Animator>();
+
+        breakPending = true;
+        breakT = 0f;
+        sampleInit = false;
+        sampleVel = Vector3.zero;
+        sampleAngVel = Vector3.zero;
+        return true;
+    }
+
+    /// 出手时间（秒）：第 breakReleaseFrame 帧
+    float BreakReleaseTime()
+    {
+        return breakReleaseFrame / Mathf.Max(1f, breakClipFps);
+    }
+
+    /// 是否已经播到破防动画的出手帧（用状态内进度换算成秒，避免过渡时长把时机带偏）
+    bool InBreakState(out float stateTime)
+    {
+        stateTime = 0f;
+        if (breakAnimator == null) return false;
+        var st = breakAnimator.GetCurrentAnimatorStateInfo(0);
+        if (st.shortNameHash != BreakStateH) return false;
+        stateTime = st.normalizedTime * breakClipLength;
+        return true;
+    }
+
+    /// <summary>
+    /// 逐帧采样盾的世界速度/角速度。放在 LateUpdate：Animator 在 Update 之后才写骨骼，
+    /// 此时读到的才是本帧动画实际摆到的姿态。
+    /// </summary>
+    void SampleBreakMotion(float dt)
+    {
+        Vector3 p = transform.position;
+        Quaternion r = transform.rotation;
+
+        if (sampleInit && dt > 1e-5f)
+        {
+            Vector3 v = (p - samplePrevPos) / dt;
+
+            Quaternion dq = r * Quaternion.Inverse(samplePrevRot);
+            float ang; Vector3 axis;
+            dq.ToAngleAxis(out ang, out axis);
+            if (ang > 180f) ang -= 360f;                        // ToAngleAxis 只给 0~360，取短弧
+            Vector3 av = axis.sqrMagnitude > 1e-8f
+                ? axis.normalized * (ang * Mathf.Deg2Rad / dt)
+                : Vector3.zero;
+
+            // 帧间差分抖动大，做一次平滑，免得某一帧抽风把盾弹射出去
+            sampleVel = Vector3.Lerp(sampleVel, v, 0.5f);
+            sampleAngVel = Vector3.Lerp(sampleAngVel, av, 0.5f);
+        }
+
+        samplePrevPos = p;
+        samplePrevRot = r;
+        sampleInit = true;
+    }
+
+    void LateUpdate()
+    {
+        if (!breakPending) return;
+
+        float dt = Time.deltaTime;
+        SampleBreakMotion(dt);
+        breakT += dt;
+
+        float releaseT = BreakReleaseTime();
+        float stateTime;
+        if ((InBreakState(out stateTime) && stateTime >= releaseT) || breakT >= breakForceTime)
+            ReleaseBreak();
+    }
+
+    /// 出手帧：把采样到的速度/角速度交给刚体，之后完全交给物理
+    void ReleaseBreak()
+    {
+        breakPending = false;
+
+        Vector3 pos = transform.position;
+        Quaternion rot = transform.rotation;
+
+        // 先脱离骨骼层级再挂刚体：挂在动画骨骼下的刚体会被物理接管、不再跟随动画
+        transform.SetParent(null, true);
+        transform.SetPositionAndRotation(pos, rot);
+
+        EnsurePhysics();
+        IgnoreSelf(true);       // 脱手瞬间别踫到主角自己的碰撞体
+
+        rb.isKinematic = false;
+        rb.detectCollisions = true;
+        rb.WakeUp();
+
+        Vector3 v = sampleVel * breakSpeedScale;
+        if (v.magnitude < breakMinSpeed)     // 采样速度过小（那几帧手几乎没动）时的兜底，保证确实被打飞
+        {
+            Vector3 d = v.sqrMagnitude > 1e-6f ? v.normalized : (owner != null ? owner.forward : transform.forward);
+            v = d * breakMinSpeed;
+        }
+        rb.linearVelocity = v;
+        rb.angularVelocity = sampleAngVel * breakSpinScale;
+
+        Current = State.Flying;
+        restTimer = 0f;
+        firstHitFired = false;
+        fromBreak = true;
+        hitThisThrow.Clear();
+        hitThisThrowHealth.Clear();
+        lastVel = v;        // 碰撞结算当作"碰撞前速度"
+    }
+
     void Update()
     {
         if (Current != State.Returning) return;
@@ -254,8 +404,9 @@ public class ShieldThrow : MonoBehaviour
         Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
         SettleHit(collision.collider, point);
 
-        // 相机的"投掷观察期"只关心第一次碰撞，之后继续撞不再重复通知
-        if (!firstHitFired)
+        // 相机的"投掷观察期"只关心第一次碰撞，之后继续撞不再重复通知。
+        // 破防掉盾不是主动投掷，不拉观察期。
+        if (!firstHitFired && !fromBreak)
         {
             firstHitFired = true;
             var handler = FlightFirstHit; if (handler != null) handler();
@@ -411,6 +562,7 @@ public class ShieldThrow : MonoBehaviour
         Current = State.Flying;
         restTimer = 0f;
         firstHitFired = false;
+        fromBreak = false;
         hitThisThrow.Clear();
         hitThisThrowHealth.Clear();
         lastVel = dir * throwSpeed;     // 出手瞬间速度：碰撞结算用（物理步之后 rb 的速度已被改写）
@@ -484,6 +636,7 @@ public class ShieldThrow : MonoBehaviour
             colRuntime = false;
         }
 
+        breakPending = false;   // 破防掉盾 pending 期间被强制复位时清掉，避免残留到下一次
         Current = State.InHand;
         restTimer = 0f;
     }
