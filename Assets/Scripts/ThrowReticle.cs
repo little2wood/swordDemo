@@ -19,9 +19,14 @@ public class ThrowReticle : MonoBehaviour
     public float maxRange = 60f;        // 最长算多远
     public LayerMask castLayers = Physics.DefaultRaycastLayers;
 
+    [Header("瞄准时突出显示")]
+    public float aimScale = 1.6f;                               // 按住空格瞄准时圆盘放大倍数
+    public Color aimColor = new Color(0.35f, 1f, 0.55f, 0.95f); // 瞄准时的高亮色
+
     GameObject discObj;
     MeshRenderer discR;
     Transform discT;
+    bool aiming;
     const int DiscSegments = 32;
 
     void Awake()
@@ -87,6 +92,12 @@ public class ThrowReticle : MonoBehaviour
         UpdateVisual();
     }
 
+    /// <summary>按住空格瞄准时调用：圆盘放大并变高亮色，突出预瞄点</summary>
+    public void SetAiming(bool on)
+    {
+        aiming = on;
+    }
+
     /// <summary>更新命中标记（LateUpdate 自动调用；也可手动调用来预览）</summary>
     public void UpdateVisual()
     {
@@ -94,8 +105,9 @@ public class ThrowReticle : MonoBehaviour
         if (!showImpactMarker) return;
         if (shield == null || !shield.InHand) return;
 
+        // 起点与真实甩出点完全一致（含 AimSideOffset），预瞄点才会等于真实落点
         Vector3 aim = shield.AimDirection();
-        Vector3 pos = shield.transform.position + aim * shield.throwForward;
+        Vector3 pos = shield.AimStartPoint();
         Vector3 v = aim * shield.throwSpeed;
         float dt = 1f / 60f;                        // 与 ShieldThrow.FixedUpdate 的积分保持一致
         float travelled = 0f;
@@ -173,8 +185,8 @@ public class ThrowReticle : MonoBehaviour
         // +Z 对准被瞄准表面的法线 → 圆盘贴着表面；抬一点点避免陷进去打 z-fighting
         discT.position = center + normal * 0.012f;
         discT.rotation = Quaternion.LookRotation(normal);
-        discT.localScale = Vector3.one * ringRadius;
-        discR.sharedMaterial.color = c;
+        discT.localScale = Vector3.one * ringRadius * (aiming ? aimScale : 1f);
+        discR.sharedMaterial.color = aiming ? aimColor : c;
         discObj.SetActive(true);
     }
 

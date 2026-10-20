@@ -55,6 +55,8 @@ public class PlayerController : MonoBehaviour
 
     bool throwPending;      // 已起手投掷动画，等动画走到出手点
     float throwPendingTime;
+    bool aimMode;           // 按住空格中：镜头拉近 + 身体对准这一击的方向
+    ThirdPersonCamera thirdPersonCamera;
     bool throwAiming;       // 起手中：先把身体转到投掷方向（没移动输入时就是原地转身）
     float throwAimYaw;      // 目标朝向（Y 轴欧拉角，已含 facingOffset）
 
@@ -101,25 +103,35 @@ public class PlayerController : MonoBehaviour
         }
         // 盾：留空则自动取子树里的 ShieldThrow（脚本挂在盾牌对象上）
         if (shield == null) shield = GetComponentInChildren<ShieldThrow>(true);
+        if (thirdPersonCamera == null) thirdPersonCamera = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
     }
 
     void Update()
     {
         SweepHit();     // 扫掠检测跟动画帧走（Animator 在 Update 驱动），剑尖采样按渲染帧稳定推进
 
-        // ---- 投盾：空格只负责起手动画，盾在动画的某个进度才真的飞出去（手抬起来的那一刻） ----
-        if (input.TakeThrowRequest() && shield != null && shield.InHand && CanStartThrow())
-        {
-            // 起手：先记下这一击的方向，待会儿在 FixedUpdate 里把身体转过去
-            Vector3 aim = shield.AimDirection();
-            throwAimYaw = Mathf.Atan2(aim.x, aim.z) * Mathf.Rad2Deg + facingOffset;
-            throwAiming = true;
+        bool released = input.TakeThrowRelease();   // 每帧都消费一次"松开空格"，避免事件堆积到下一次瞄准
+        // ---- 投盾：松开空格的那一帧调用（TakeThrowRelease 每帧都要消费一次，避免事件堆积） ----
+        if (released && aimMode) ReleaseThrow();
 
-            anim.SetTrigger(ThrowId);
-            throwPending = true;
-            throwPendingTime = 0f;
+        // ---- 投盾：按住空格 = 瞄准（拉近镜头、突出预瞄点），松开 = 掷出 ----
+        bool canThrow = shield != null && shield.InHand && CanStartThrow();
+
+        if (input.ThrowHeld && canThrow)
+        {
+            if (!aimMode) BeginAim();
+            // 按住期间持续更新目标朝向：边瞄准边转鼠标，身体跟着改方向
+            Vector3 aim = shield != null ? shield.AimDirection() : transform.forward;
+            throwAimYaw = Mathf.Atan2(aim.x, aim.z) * Mathf.Rad2Deg + facingOffset;
+        }
+        else if (aimMode && (!input.ThrowHeld || !canThrow))
+        {
+            // 中途松开失败/盾没了/进了攻击链：退出瞄准，但不当作投掷
+            EndAim();
+            throwAiming = false;
         }
 
+        // ---- 已起手投掷动画：等动画走到出手点时才真的把盾甩出去 ----
         if (throwPending)
         {
             throwPendingTime += Time.deltaTime;
@@ -140,18 +152,46 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    /// 身体是否已经转到这一击的方向（还不够对准就再等两帧，别歪着把盾甩出去）
-    bool FacingAligned()
-    {
-        float err = Mathf.Abs(Mathf.DeltaAngle(transform.eulerAngles.y, throwAimYaw));
-        return err <= maxReleaseAngle;
-    }
-
     /// 能否起手投掷：站/走时都行，攻击链与防御中不行
     bool CanStartThrow()
     {
         int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
         return h == IdleH || h == JogH;
+    }
+
+    // ---- 按住空格瞄准 → 松开空格掷出 ----
+
+    /// 进入瞄准：镜头拉近、预瞄点放大高亮、身体开始对准这一击的方向
+    void BeginAim()
+    {
+        aimMode = true;
+        throwAiming = true;
+        if (thirdPersonCamera != null) thirdPersonCamera.SetAiming(true);
+        if (shield != null && shield.reticle != null) shield.reticle.SetAiming(true);
+    }
+
+    /// 退出瞄准：镜头推回原处、预瞄点恢复常态
+    void EndAim()
+    {
+        aimMode = false;
+        if (thirdPersonCamera != null) thirdPersonCamera.SetAiming(false);
+        if (shield != null && shield.reticle != null) shield.reticle.SetAiming(false);
+    }
+
+    /// 松开空格 → 起手投掷动画（盾在动画走到出手点时才真的飞出去）
+    void ReleaseThrow()
+    {
+        anim.SetTrigger(ThrowId);
+        throwPending = true;
+        throwPendingTime = 0f;
+        EndAim();       // 掷出的同时镜头推回正常距离
+    }
+
+    /// 身体是否已经转到这一击的方向（还不够对准就再等两帧，别歪着把盾甩出去）
+    bool FacingAligned()
+    {
+        float err = Mathf.Abs(Mathf.DeltaAngle(transform.eulerAngles.y, throwAimYaw));
+        return err <= maxReleaseAngle;
     }
 
     void FixedUpdate()

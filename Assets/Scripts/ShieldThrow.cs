@@ -14,12 +14,16 @@ public class ShieldThrow : MonoBehaviour
     [Header("引用（留空自动查找）")]
     public Transform owner;                 // 主角（含 PlayerController 的那个根物体）
     public Camera aimCamera;                // 瞄准参考相机（留空取 Camera.main）
+    public ThrowReticle reticle;            // 瞄准指示器（瞄准时由它放大突出预瞄点）
     public string socketName = "Shield_L";  // 场景里盾牌挂点名（脚本挂盾自身时可留空）
 
     [Header("出手")]
-    public bool flattenAim = true;          // true=只保留左右瞄准（水平甩出）；false=允许相机俯仰参与
+    [Tooltip("false=全方位投掷：相机的俯仰角直接当成出手仰角，可以往天上抛、也可以居高临下往下砸；\ntrue=只保留左右瞄准（强制水平甩出，最好瞄）")]
+    public bool flattenAim = false;         // 默认全方位；想改回"只能水平甩"勾上它
     public float throwSpeed = 22f;          // 出手速度（m/s）
     public float throwForward = 0.6f;       // 出手点沿瞄准方向前移，避免一出手就擦到自身
+    [Tooltip("甩出去的起点沿\"画面右方\"侧移多少米：让整条弹道连同预瞄点一起偏右，\n近距离时才不会被主角自己的模型挡住。0=完全从身前飞出。实际飞行与预测共用这个起点，所以预瞄点仍然精确。")]
+    public float aimSideOffset = 0.45f;
 
     [Header("自旋（飞盘式：绕盾面法线）")]
     [Tooltip("盾面法线（本地轴）。(0,0,0) 时按网格包围盒最薄的一轴自动判定")]
@@ -58,6 +62,8 @@ public class ShieldThrow : MonoBehaviour
             owner = pc != null ? pc.transform : transform.root;
         }
         if (aimCamera == null) aimCamera = Camera.main;
+        if (reticle == null) reticle = GetComponent<ThrowReticle>();
+        if (reticle == null && owner != null) reticle = owner.GetComponentInChildren<ThrowReticle>(true);
 
         // 挂点可以是盾自身（脚本挂在盾上时），也可以是 owner 下的同名骨骼空物体
         Transform self = transform;
@@ -161,12 +167,26 @@ public class ShieldThrow : MonoBehaviour
         return d.normalized;
     }
 
+    /// <summary>
+    /// 甩出去的起点：这是盾本身就是"甩"出去的，起点可以侧移到身体右前方。
+    /// 飞行与预测线共用这个起点，所以预瞄点标的位置仍然就是盾真会落到的地方 —— 只是整体偏右，
+    /// 近距离时不会被自己的模型挡住。dir 为瞄准方向时按它的右手侧横移。
+    /// </summary>
+    public Vector3 AimStartPoint()
+    {
+        Vector3 aim = AimDirection();
+        Vector3 right = Vector3.Cross(Vector3.up, aim);
+        if (right.sqrMagnitude < 1e-6f) right = Vector3.right;      // 垂直上下瞄准时的兜底
+        right.Normalize();
+        return transform.position + aim * throwForward + right * aimSideOffset;
+    }
+
     /// <summary>沿 dir 甩出（由 PlayerController 消费空格输入后调用）。</summary>
     public void Throw(Vector3 dir)
     {
         if (Current != State.InHand) return;
 
-        Vector3 start = transform.position + dir * throwForward;
+        Vector3 start = AimStartPoint();
 
         // 先脱离骨骼层级，再挂刚体：飞行的刚体留在动画骨骼下会和骨骼姿态互相打架
         transform.SetParent(null, true);

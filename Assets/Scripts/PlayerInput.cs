@@ -24,9 +24,14 @@ public class PlayerInput : MonoBehaviour
     public bool GuardHeld { get; private set; }
 
     /// <summary>
-    /// 投盾请求缓冲：空格按下瞬间置位，保持到被消费为止（与攻击缓冲同理，避免落在无物理步的帧上丢输入）。
+    /// 投盾：按住空格 = 进入瞄准（拉近镜头、突出预瞄点，不投掷）；
+    /// 松开空格的那一下 = 真的甩出去。
+    /// ThrowHeld 是当前是否按住（持续状态），ThrowReleased 是"本帧松开"的单帧事件。
     /// </summary>
-    public bool ThrowBuffered { get; private set; }
+    public bool ThrowHeld { get; private set; }
+    public bool ThrowReleased { get; private set; }
+
+    bool prevThrowHeld;
 
     void Start()
     {
@@ -66,15 +71,18 @@ public class PlayerInput : MonoBehaviour
         // 鼠标右键：按住即防御，松开即收盾
         GuardHeld = mouse != null && mouse.rightButton.isPressed;
 
-        // 空格：按下瞬间 → 置入投盾缓冲（由 PlayerController 消费）
-        if (kb != null && kb.spaceKey.wasPressedThisFrame) ThrowBuffered = true;
+        // 空格：按住=瞄准，松开=掷出
+        bool held = kb != null && kb.spaceKey.isPressed;
+        ThrowReleased = prevThrowHeld && !held;     // 本帧松开
+        ThrowHeld = held;
+        prevThrowHeld = held;
     }
 
-    /// <summary>消费投盾请求：返回是否存在待处理的按键，并清除缓冲。</summary>
-    public bool TakeThrowRequest()
+    /// <summary>消费"松开空格"事件：返回本帧是否松开了空格，并清除标志。</summary>
+    public bool TakeThrowRelease()
     {
-        bool v = ThrowBuffered;
-        ThrowBuffered = false;
+        bool v = ThrowReleased;
+        ThrowReleased = false;
         return v;
     }
 

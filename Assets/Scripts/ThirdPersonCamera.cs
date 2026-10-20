@@ -15,9 +15,10 @@ public class ThirdPersonCamera : MonoBehaviour
 
     [Header("球面")]
     public float distance = 4.5f;       // 球面半径（相机到腰部的距离）
-    [Range(0f, 89f)] public float pitch = 18f;  // 仰角：0=腰部平面，90=正上方
-    public float minPitch = 0f;         // 半球底面：不允许低于腰部平面
+    [Range(-45f, 89f)] public float pitch = 18f;    // 仰角：0=腰部平面，90=正上方，负=沉到腰部以下往上仰视
+    public float minPitch = -45f;       // 允许负值：相机会沉到腰部以下，屏幕中心随之抬起 → 可以仰射
     public float maxPitch = 85f;        // 接近天顶留余量，避免朝向奇异
+    [Tooltip("相机不低于角色脚部上方这么多米，防止负 pitch 时钻进地面")] public float minCameraHeight = 0.15f;
 
     [Header("鼠标")]
     public float sensitivityX = 0.06f;  // 度/像素
@@ -31,10 +32,20 @@ public class ThirdPersonCamera : MonoBehaviour
     public float minDistance = 0.6f;        // 被遮挡时最近可拉到多近
     public float restoreSpeed = 4f;         // 遮挡消失后推远的速度（m/s）
 
+    [Header("瞄准拉近（投掷瞄准用）")]
+    [Range(0.1f, 1f)] public float aimDistanceScale = 0.45f;   // 瞄准时球面半径缩到原来的多少
+    public float zoomSpeed = 7f;                               // 拉近/推远的速度（m/s）
+    [Tooltip("瞄准时相机整体沿右侧平移的距离：靠视差把主角错到画面左边，别让模型挡住远处的预瞄点")]
+    public float aimShoulderOffset = 0.6f;
+    public float shoulderSpeed = 6f;                           // 越肩平移的速度（m/s）
+
     PlayerInput input;
     float yaw;
-    float currentDistance;              // 当前"注视点 → 相机"的实际距离（沿 dir）
+    float restDistance;             // 当前理想球面半径（会被瞄准拉近修改）
+    float shoulder;                 // 当前越肩平移量
+    float currentDistance;              // 当前"注视点 → 相机"的实际距离（沿 dir，含避障结果）
     bool distanceReady;
+    bool aiming;                    // 是否处于瞄准态（由外部 SetAiming 控制）
     RaycastHit[] hits = new RaycastHit[8];
 
     void Start()
@@ -46,7 +57,20 @@ public class ThirdPersonCamera : MonoBehaviour
         var pc = target.GetComponent<PlayerController>();
         yaw = target.eulerAngles.y + (pc != null ? pc.facingOffset : 0f);
 
+        restDistance = distance;
         Apply();
+    }
+
+    /// <summary>切到/退出瞄准视角（球面半径在 distance 与 distance*aimDistanceScale 之间过渡）。</summary>
+    public void SetAiming(bool on)
+    {
+        aiming = on;
+    }
+
+    /// <summary>当前理想球面半径（瞄准时更近）。</summary>
+    public float CurrentRestDistance
+    {
+        get { return restDistance; }
     }
 
     void LateUpdate()
@@ -74,8 +98,23 @@ public class ThirdPersonCamera : MonoBehaviour
         // pitch 绕 X 轴抬起，yaw 绕 Y 轴环绕；back 为"从球心指向相机"的方向
         Vector3 dir = Quaternion.Euler(pitch, yaw, 0f) * Vector3.back;
 
+        // ---- 越肩平移：相机连同注视点整体沿"画面右方"平移 ----
+        // 视差让近处的主角在画面上大幅左移、远处的预瞄点几乎不动，于是不再被挡住
+        float wantShoulder = aiming ? aimShoulderOffset : 0f;
+        shoulder = Mathf.MoveTowards(shoulder, wantShoulder, shoulderSpeed * Time.deltaTime);
+        if (Mathf.Abs(shoulder) > 0.001f)
+        {
+            Vector3 camRight = Vector3.Cross(Vector3.up, -dir).normalized;
+            pivot += camRight * shoulder;
+            look += camRight * shoulder;
+        }
+
+        // 理想球面半径平缓过渡到"常态 / 瞄准"两档，再交给避障逻辑
+        float want = aiming ? distance * aimDistanceScale : distance;
+        restDistance = Mathf.MoveTowards(restDistance, want, zoomSpeed * Time.deltaTime);
+
         // 无遮挡时的理想距离：注视点 → 球面位置
-        float desiredDist = Vector3.Distance(look, pivot + dir * distance);
+        float desiredDist = Vector3.Distance(look, pivot + dir * restDistance);
 
         // ---- 避障：从注视点朝相机方向做球体投射 ----
         float allowed = desiredDist;
@@ -98,6 +137,19 @@ public class ThirdPersonCamera : MonoBehaviour
         else currentDistance = Mathf.MoveTowards(currentDistance, allowed, restoreSpeed * Time.deltaTime);
 
         transform.position = look + dir * currentDistance;
+
+        // 负 pitch 时相机会沉到腰部以下：把它连同注视点整体抬回地面之上（视线方向保持不变）
+        if (target != null)
+        {
+            float floor = target.position.y + minCameraHeight;
+            if (transform.position.y < floor)
+            {
+                float lift = floor - transform.position.y;
+                transform.position += Vector3.up * lift;
+                look += Vector3.up * lift;
+            }
+        }
+
         transform.LookAt(look);
     }
 }
