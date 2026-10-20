@@ -72,6 +72,8 @@ public class ShieldThrow : MonoBehaviour
     float restTimer;
     bool firstHitFired;     // 本次飞行是否已报告过第一次碰撞
 
+    bool colRuntime;     // 碰撞体是否为出手时由脚本创建（回收时要销毁）
+
     // 回收插值状态：从 returnFrom 沿一条拱起的弧线飞回 socket
     Vector3 returnFrom;
     Quaternion returnFromRot;
@@ -137,7 +139,9 @@ public class ShieldThrow : MonoBehaviour
             var box = gameObject.AddComponent<BoxCollider>();
             FitBoxToMesh(box);
             col = box;
+            colRuntime = true;      // 脚本创建的：回手时销毁，别留在手上
         }
+        else colRuntime = false;
     }
 
     /// 碰撞体按网格包围盒自动贴合（略大于本 mesh），省掉手工调数值
@@ -454,7 +458,7 @@ public class ShieldThrow : MonoBehaviour
         }
     }
 
-    /// 回到"在手"的静止态（Awake 初始化用；后续回收步骤会复用）
+    /// 回到"在手"的静止态（Awake 初始化用；回收落位也走这里）
     void SetIdle()
     {
         if (rb != null)
@@ -466,7 +470,20 @@ public class ShieldThrow : MonoBehaviour
             }
             rb.isKinematic = true;
             rb.detectCollisions = false;
+
+            // 出手时创建的刚体必须在回手时销毁：挂在骨骼层级下带刚体会被物理接管，
+            // 不再跟随动画 —— 表现为"盾悬空留在原地、主角走远"
+            DestroyImmediate(rb);
+            rb = null;
         }
+
+        if (col != null && colRuntime)
+        {
+            DestroyImmediate(col);
+            col = null;
+            colRuntime = false;
+        }
+
         Current = State.InHand;
         restTimer = 0f;
     }
