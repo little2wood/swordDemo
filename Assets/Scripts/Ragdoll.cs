@@ -48,15 +48,21 @@ public class Ragdoll : MonoBehaviour
 
     bool active;
 
+    // 部件 → 子骨骼（构成"骨骼线段"的远端；末端骨骼为 null）。Build() 时填充，
+    // 供外部（如盾牌局部受力）按"点到骨骼线段的距离"定位被击中的骨头，
+    // 而不必依赖碰撞体查询 —— 存活期间部件是 kinematic 且 detectCollisions=false，ClosestPoint 会退化失效。
+    readonly Dictionary<Rigidbody, Transform> childOfPart = new Dictionary<Rigidbody, Transform>();
+    bool boneSegmentsReady;
+
     // 骨骼规格：骨骼名 / 子骨骼名（量长度用）/ 质量 / 半径
-    class BoneSpec
+    public class BoneSpec
     {
         public string bone, child;
         public float mass, radius;
         public BoneSpec(string b, string c, float m, float r) { bone = b; child = c; mass = m; radius = r; }
     }
 
-    static readonly BoneSpec[] Specs = new BoneSpec[]
+    public static readonly BoneSpec[] Specs = new BoneSpec[]
     {
         // 质量比尽量控制在 3:1 以内（悬殊的质量比会让关节解算器发抖）
         new BoneSpec("pelvis",   "spine_01",  10f, 0.13f),
@@ -271,6 +277,79 @@ public class Ragdoll : MonoBehaviour
         var col = p.GetComponent<Collider>();
         Vector3 closest = col != null ? col.ClosestPoint(point) : p.worldCenterOfMass;
         return Vector3.Distance(closest, point);
+    }
+
+    /// <summary>
+    /// 按"点到骨骼线段的距离"找出离命中点最近的部件（即被击中的部位），供外部局部受力使用。
+    /// 存活期间部件的 collider 被禁用，ClosestPoint 会退化失效，所以这里走纯几何的线段距离。
+    /// </summary>
+    public Rigidbody NearestPartByBone(Vector3 point, out float distance)
+    {
+        BuildBoneSegments();
+        Rigidbody best = null;
+        float bestD = float.MaxValue;
+        foreach (var kv in childOfPart)
+        {
+            if (kv.Key == null) continue;
+            float d = DistanceToBoneSegment(kv.Key, point);
+            if (d < bestD) { bestD = d; best = kv.Key; }
+        }
+        distance = bestD;
+        return best;
+    }
+
+    /// 按需重建"部件 → 子骨骼"映射：场景里的布娃娃往往是预生成并保存好的，
+    /// 不会重新走 Build()，所以这里在首次查询时才建立映射（不依赖 Build 被调用）。
+    void BuildBoneSegments()
+    {
+        if (boneSegmentsReady) return;
+        childOfPart.Clear();
+
+        foreach (var rb in parts)
+        {
+            if (rb == null) continue;
+            string childName = ChildNameOf(rb.transform.name);
+            Transform child = null;
+            if (!string.IsNullOrEmpty(childName))
+            {
+                // 骨架里子骨骼就是该骨骼的直接子节点（子骨骼恒在局部 +Y，见 Build）
+                for (int i = 0; i < rb.transform.childCount; i++)
+                {
+                    var c = rb.transform.GetChild(i);
+                    if (c != null && c.name == childName) { child = c; break; }
+                }
+            }
+            childOfPart[rb] = child;
+        }
+
+        boneSegmentsReady = true;
+    }
+
+    /// 查骨骼规格表里某根骨骼对应的子骨骼名（末端骨骼返回空串）
+    public static string ChildNameOf(string bone)
+    {
+        for (int i = 0; i < Specs.Length; i++)
+        {
+            var s = Specs[i];
+            if (s != null && s.bone == bone) return s.child;
+        }
+        return "";
+    }
+
+    /// 点到骨骼线段的距离：线段 = 骨骼原点 → 子骨骼原点；末端骨骼退化为到原点的距离
+    public float DistanceToBoneSegment(Rigidbody part, Vector3 point)
+    {
+        if (part == null) return float.MaxValue;
+        Transform a = part.transform;
+        Transform b;
+        childOfPart.TryGetValue(part, out b);
+        if (b == null) return Vector3.Distance(a.position, point);
+
+        Vector3 ab = b.position - a.position;
+        float len2 = ab.sqrMagnitude;
+        if (len2 < 1e-8f) return Vector3.Distance(a.position, point);
+        float t = Mathf.Clamp01(Vector3.Dot(point - a.position, ab) / len2);
+        return Vector3.Distance(point, a.position + ab * t);
     }
 
     Transform FindPelvis()

@@ -664,8 +664,9 @@ MonoBehaviour:
   lookHeight: 1.4
   distance: 4.5
   pitch: 18
-  minPitch: 0
+  minPitch: -45
   maxPitch: 85
+  minCameraHeight: 0.15
   sensitivityX: 0.06
   sensitivityY: 0.06
   invertX: 0
@@ -676,6 +677,12 @@ MonoBehaviour:
   cameraRadius: 0.25
   minDistance: 0.6
   restoreSpeed: 4
+  aimDistanceScale: 0.45
+  zoomSpeed: 7
+  aimShoulderOffset: 0.6
+  shoulderSpeed: 6
+  throwHoldTime: 3
+  hitHoldTime: 1
 --- !u!1 &336358146 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -8819792451641598848, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
@@ -1135,6 +1142,31 @@ MonoBehaviour:
   minScale: 0.35
   stiffness: 150
   damping: 12
+  debugLog: 0
+--- !u!114 &469687800
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 469687787}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2cf1a1017a1848a41a1854f6de7e813a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShieldHitReaction
+  health: {fileID: 469687794}
+  ragdoll: {fileID: 469687795}
+  refImpulse: 80
+  minScale: 0.35
+  impulseStrength: 200
+  maxAngle: 22
+  stiffness: 150
+  damping: 12
+  refLeverArm: 0.35
+  minLeverScale: 0.4
+  childWeight: 0.5
+  grandChildWeight: 0.25
   debugLog: 0
 --- !u!1 &471596838 stripped
 GameObject:
@@ -2265,6 +2297,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 469687797}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 469687800}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 642556237}
@@ -4711,6 +4746,13 @@ MonoBehaviour:
   bladeRadius: 0.05
   tipLength: 0.25
   debugSweep: 0
+  shield: {fileID: 0}
+  throwReleaseTime: 0.2
+  throwTurnSpeed: 900
+  maxReleaseAngle: 12
+  throwForceTime: 0.55
+  throwPendingTimeout: 0.6
+  throwMoveLockTime: 0.45
   propLayer:
     serializedVersion: 2
     m_Bits: 1024
@@ -6095,6 +6137,8 @@ GameObject:
   - component: {fileID: 1448650014}
   - component: {fileID: 1448650016}
   - component: {fileID: 1448650015}
+  - component: {fileID: 1448650017}
+  - component: {fileID: 1448650018}
   m_Layer: 0
   m_Name: Shield_L
   m_TagString: Untagged
@@ -6174,6 +6218,64 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1448650013}
   m_Mesh: {fileID: 4300000, guid: 752bd07183aa62047a4b87a5482b8861, type: 2}
+--- !u!114 &1448650017
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1448650013}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e2d1b54499078df428c7bf1817d2233c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShieldThrow
+  owner: {fileID: 0}
+  aimCamera: {fileID: 0}
+  reticle: {fileID: 0}
+  socketName: Shield_L
+  flattenAim: 0
+  throwSpeed: 22
+  throwForward: 0.6
+  aimSideOffset: 0.45
+  spinLocalAxis: {x: 0, y: 0, z: 0}
+  spinRate: 12
+  alignFaceToThrow: 1
+  propLayer:
+    serializedVersion: 2
+    m_Bits: 1024
+  shieldMass: 4
+  maxThrowSpeed: 22
+  throwDamage: 5
+  gravityScale: 0.4
+  flightDrag: 0.02
+  maxSpeed: 40
+  restSpeed: 1
+  restTime: 0.3
+--- !u!114 &1448650018
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1448650013}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1b22314a822a66f4c8ff8127f3d27ae4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ThrowReticle
+  shield: {fileID: 0}
+  aimCamera: {fileID: 0}
+  showImpactMarker: 1
+  ringRadius: 0.14
+  hitColor: {r: 0.4, g: 0.9, b: 1, a: 0.9}
+  missColor: {r: 0.6, g: 0.6, b: 0.6, a: 0.5}
+  maxRange: 60
+  castLayers:
+    serializedVersion: 2
+    m_Bits: 1587
+  aimScale: 1.6
+  aimColor: {r: 0.35, g: 1, b: 0.55, a: 0.95}
 --- !u!4 &1466793027 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -2460491079173723018, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}

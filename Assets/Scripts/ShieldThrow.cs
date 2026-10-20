@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -32,6 +33,13 @@ public class ShieldThrow : MonoBehaviour
     [Tooltip("出手瞬间盾面放平、边缘朝前：法线竖直（水平弹道时正朝上），像美队盾牌那样绕竖直轴旋着飞出")]
     public bool alignFaceToThrow = true;
 
+    [Header("命中结算")]
+    [Tooltip("可互动物体所在层（Inspector 选 Prop）：箱子等；主角/敌人/平台不在该层，天然不受影响")]
+    public LayerMask propLayer;
+    public float shieldMass = 4f;       // 盾的有效质量：冲量 = 盾速度(m/s) × 该质量(kg)，单位 N·s
+    public float maxThrowSpeed = 22f;   // 用于冲量计算的速度上限（防卡顿帧/峰值把目标弹射上天）
+    public float throwDamage = 5f;      // 一发盾牌的伤害
+
     [Header("飞行物理")]
     [Range(0f, 1f)] public float gravityScale = 0.4f;   // 重力缩放（0=直线，1=完整抛物线）
     public float flightDrag = 0.02f;                    // 线性阻尼（飞行衰减）
@@ -55,6 +63,11 @@ public class ShieldThrow : MonoBehaviour
 
     float restTimer;
     bool firstHitFired;     // 本次飞行是否已报告过第一次碰撞
+
+    // 一次飞行内的命中去重：同一个箱子/同一个敌人只结算一次，避免弹跳反复触发
+    readonly HashSet<Rigidbody> hitThisThrow = new HashSet<Rigidbody>();
+    readonly HashSet<Health> hitThisThrowHealth = new HashSet<Health>();
+    Vector3 lastVel;        // 最近一次 FixedUpdate 的盾速度（碰撞时物理已改过 rb，用它当碰撞前速度）
 
     /// 飞行途中第一次撞到外部物体时触发（供相机提前结束"投掷观察期"等外部逻辑使用）
     public event System.Action FlightFirstHit;
@@ -143,6 +156,7 @@ public class ShieldThrow : MonoBehaviour
         v *= 1f / (1f + flightDrag * dt);
         v = Vector3.ClampMagnitude(v, maxSpeed);
         rb.linearVelocity = v;
+        lastVel = v;        // 供碰撞结算当作"碰撞前速度"（物理步之后 rb 的速度已被改变）
 
         // 停下来 → 冻结在原地
         if (v.sqrMagnitude < restSpeed * restSpeed)
@@ -157,10 +171,45 @@ public class ShieldThrow : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
-        if (Current != State.Flying || firstHitFired) return;
+        if (Current != State.Flying) return;
         if (IsSelfCollider(collision.collider)) return;   // 保险：IgnoreCollision 已挡住自己人，这里再筛一次
-        firstHitFired = true;
-        var handler = FlightFirstHit; if (handler != null) handler();
+
+        Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
+        SettleHit(collision.collider, point);
+
+        // 相机的"投掷观察期"只关心第一次碰撞，之后继续撞不再重复通知
+        if (!firstHitFired)
+        {
+            firstHitFired = true;
+            var handler = FlightFirstHit; if (handler != null) handler();
+        }
+    }
+
+    /// <summary>
+    /// 命中结算：箱子走 PropImpulse 冲量击飞；敌人走 ShieldHitReaction 按骨骼局部受力 + 扣血。
+    /// （这里刻意不走 HitReaction —— 投掷盾牌是独立方案，不叠加统一的上半身摆动。）
+    /// </summary>
+    void SettleHit(Collider col, Vector3 point)
+    {
+        // ---- 可互动物体（Prop 层）：接触点施加冲量，偏心命中自动产生扭矩 ----
+        if (PropImpulse.IsProp(col.gameObject, propLayer))
+        {
+            PropImpulse.Apply(col.attachedRigidbody, lastVel, shieldMass, maxThrowSpeed, point, hitThisThrow);
+            return;
+        }
+
+        // ---- 敌人：按被击中的骨骼做局部受力反馈 ----
+        var hp = col.GetComponentInParent<Health>();
+        if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
+        if (!hitThisThrowHealth.Add(hp)) return;    // 这次飞行已结算过该目标
+
+        Vector3 dir = lastVel.sqrMagnitude > 1e-6f ? lastVel.normalized : transform.forward;
+        float impulse = PropImpulse.Magnitude(lastVel, shieldMass);
+
+        var reaction = col.GetComponentInParent<ShieldHitReaction>();
+        if (reaction != null) reaction.ReactAt(point, dir, impulse);
+
+        hp.TakeDamage(throwDamage, dir, impulse, point, true);   // 致死时自动交给原 Ragdoll 方案
     }
 
     // ---------- 出手 ----------
@@ -288,6 +337,9 @@ public class ShieldThrow : MonoBehaviour
         Current = State.Flying;
         restTimer = 0f;
         firstHitFired = false;
+        hitThisThrow.Clear();
+        hitThisThrowHealth.Clear();
+        lastVel = dir * throwSpeed;     // 出手瞬间速度：碰撞结算用（物理步之后 rb 的速度已被改写）
 
         rb.linearVelocity = dir * throwSpeed;
 
