@@ -37,6 +37,8 @@ public class PlayerController : MonoBehaviour
     public float maxReleaseAngle = 12f;        // 朝向与目标偏差小于这么多度才允许盾脱手（deg）
     public float throwForceTime = 0.55f;       // 兜底：起手后超过这么久无论如何都扔出去（防永远转不到位）
     public float throwPendingTimeout = 0.6f;   // 触发后这么久没进入投掷状态就丢弃（防卡待命）
+    [Tooltip("出手后还要锁多久的移动：等投掷动画播完再放行，否则会带着投掷姿势平移（滑步）")]
+    public float throwMoveLockTime = 0.45f;
 
     [Header("击飞可互动物体（Prop 层：箱子等）")]
     public LayerMask propLayer;         // 可互动物体所在层（Inspector 选 Prop）；主角/敌人/平台不在该层，天然不受影响
@@ -56,6 +58,7 @@ public class PlayerController : MonoBehaviour
     bool throwPending;      // 已起手投掷动画，等动画走到出手点
     float throwPendingTime;
     bool aimMode;           // 按住空格中：镜头拉近 + 身体对准这一击的方向
+    float throwLockTimer;   // 出手后的移动锁定剩余时间：等投掷动画播完，避免平移不播走路动画
     ThirdPersonCamera thirdPersonCamera;
     bool throwAiming;       // 起手中：先把身体转到投掷方向（没移动输入时就是原地转身）
     float throwAimYaw;      // 目标朝向（Y 轴欧拉角，已含 facingOffset）
@@ -143,6 +146,7 @@ public class PlayerController : MonoBehaviour
                     shield.Throw(shield.AimDirection());   // 盾内部按 flattenAim 决定是否用完整三维前向
                     throwPending = false;
                     throwAiming = false;                  // 出手了，交还给正常的移动转向
+                    throwLockTimer = throwMoveLockTime;   // 锁住移动，等投掷动画播完再放行
                 }
             }
             else if (throwPendingTime > throwPendingTimeout)
@@ -196,6 +200,8 @@ public class PlayerController : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (throwLockTimer > 0f) throwLockTimer -= Time.fixedDeltaTime;
+
         Vector2 mv = input.MoveInput;
         bool hasMove = mv.sqrMagnitude > 0.01f;
 
@@ -209,7 +215,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手转身时锁定；常态正常移动 ----
-        if (IsAttackChain() || IsGuarding() || throwAiming || !hasMove)
+        if (IsAttackChain() || IsGuarding() || throwAiming || throwLockTimer > 0f || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -234,8 +240,8 @@ public class PlayerController : MonoBehaviour
             rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, target, turnSpeed * Time.fixedDeltaTime));
         }
 
-        // ---- 动画参数 ----
-        anim.SetBool(MovingId, hasMove);
+        // ---- 动画参数：投掷动画没播完前不报"在移动"，否则会原地踩跑步动画 ----
+        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f);
 
         // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起） ----
         anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
