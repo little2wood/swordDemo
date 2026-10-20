@@ -60,7 +60,7 @@ public class PlayerController : MonoBehaviour
     bool aimMode;           // 按住空格中：镜头拉近 + 身体对准这一击的方向
     float throwLockTimer;   // 出手后的移动锁定剩余时间：等投掷动画播完，避免平移不播走路动画
     ThirdPersonCamera thirdPersonCamera;
-    bool throwAiming;       // 起手中：先把身体转到投掷方向（没移动输入时就是原地转身）
+    bool throwAiming;       // 松开空格后的起手阶段：把身体转向投掷方向（瞄准按住期间不转，交给正常移动）
     float throwAimYaw;      // 目标朝向（Y 轴欧拉角，已含 facingOffset）
 
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
@@ -123,7 +123,7 @@ public class PlayerController : MonoBehaviour
         if (input.ThrowHeld && canThrow)
         {
             if (!aimMode) BeginAim();
-            // 按住期间持续更新目标朝向：边瞄准边转鼠标，身体跟着改方向
+            // 按住期间只记录这一击的方向（预瞄点跟着动），身体不强制转向 —— 松开起手那一刻才转过去
             Vector3 aim = shield != null ? shield.AimDirection() : transform.forward;
             throwAimYaw = Mathf.Atan2(aim.x, aim.z) * Mathf.Rad2Deg + facingOffset;
         }
@@ -131,7 +131,6 @@ public class PlayerController : MonoBehaviour
         {
             // 中途松开失败/盾没了/进了攻击链：退出瞄准，但不当作投掷
             EndAim();
-            throwAiming = false;
         }
 
         // ---- 已起手投掷动画：等动画走到出手点时才真的把盾甩出去 ----
@@ -165,11 +164,10 @@ public class PlayerController : MonoBehaviour
 
     // ---- 按住空格瞄准 → 松开空格掷出 ----
 
-    /// 进入瞄准：镜头拉近、预瞄点放大高亮、身体开始对准这一击的方向
+    /// 进入瞄准：镜头拉近、预瞄点放大高亮（身体朝向交给正常移动逻辑，不强制对准）
     void BeginAim()
     {
         aimMode = true;
-        throwAiming = true;
         if (thirdPersonCamera != null) thirdPersonCamera.SetAiming(true);
         if (shield != null && shield.reticle != null) shield.reticle.SetAiming(true);
     }
@@ -182,12 +180,13 @@ public class PlayerController : MonoBehaviour
         if (shield != null && shield.reticle != null) shield.reticle.SetAiming(false);
     }
 
-    /// 松开空格 → 起手投掷动画（盾在动画走到出手点时才真的飞出去）
+    /// 松开空格 → 起手投掷动画：这一刻才把身体转向投掷方向（盾在动画走到出手点时才真的飞出去）
     void ReleaseThrow()
     {
         anim.SetTrigger(ThrowId);
         throwPending = true;
         throwPendingTime = 0f;
+        throwAiming = true;     // 起手转身开始（出手后结束）
         EndAim();       // 掷出的同时镜头推回正常距离
     }
 
@@ -214,8 +213,9 @@ public class PlayerController : MonoBehaviour
             dir = (fwd * mv.y + right * mv.x).normalized;
         }
 
-        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手转身时锁定；常态正常移动 ----
-        if (IsAttackChain() || IsGuarding() || throwAiming || throwLockTimer > 0f || !hasMove)
+        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手与出手后的收势才锁定。
+        //      瞄准（按住空格）期间照常移动，身体朝向也交给正常移动逻辑 ----
+        if (IsAttackChain() || IsGuarding() || throwPending || throwLockTimer > 0f || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -227,7 +227,7 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = v;
         }
 
-        // ---- 朝向：投掷起手时优先转去瞄准方向；否则平滑转向移动方向（攻击链与防御全程锁定不转） ----
+        // ---- 朝向：只在投掷起手阶段转去投掷方向；其余时候平滑转向移动方向（攻击链与防御全程锁定不转） ----
         if (throwAiming && !IsAttackChain() && !IsGuarding())
         {
             Quaternion aimTarget = Quaternion.Euler(0f, throwAimYaw, 0f);
@@ -240,8 +240,8 @@ public class PlayerController : MonoBehaviour
             rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, target, turnSpeed * Time.fixedDeltaTime));
         }
 
-        // ---- 动画参数：投掷动画没播完前不报"在移动"，否则会原地踩跑步动画 ----
-        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f);
+        // ---- 动画参数：投掷起手/收势期间不报"在移动"，否则会原地踩跑步动画 ----
+        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending);
 
         // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起） ----
         anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
