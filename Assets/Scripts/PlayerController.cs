@@ -31,6 +31,9 @@ public class PlayerController : MonoBehaviour
 
     [Header("盾牌（空格甩出）")]
     public ShieldThrow shield;          // 留空自动查找自身子树里的 ShieldThrow
+    [Tooltip("动画到哪个进度时盾飞出去（Shield_OneShot 里约 0.17s 手抬到最高 → 0.2 左右）")]
+    [Range(0f, 1f)] public float throwReleaseTime = 0.2f;
+    public float throwPendingTimeout = 0.6f;   // 触发后这么久没进入投掷状态就丢弃（防卡待命）
 
     [Header("击飞可互动物体（Prop 层：箱子等）")]
     public LayerMask propLayer;         // 可互动物体所在层（Inspector 选 Prop）；主角/敌人/平台不在该层，天然不受影响
@@ -47,6 +50,9 @@ public class PlayerController : MonoBehaviour
     PlayerInput input;
     Camera cam;
 
+    bool throwPending;      // 已起手投掷动画，等动画走到出手点
+    float throwPendingTime;
+
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
     Vector3 prevTip;        // 上一渲染帧的剑尖位置（扫掠起点）
     Vector3 prevInner;      // 上一渲染帧剑尖段的内端点（扫掠胶囊轴的另一端）
@@ -58,6 +64,8 @@ public class PlayerController : MonoBehaviour
     static readonly int MovingId = Animator.StringToHash("Moving");
     static readonly int GuardId = Animator.StringToHash("Guard");
     static readonly int AttackId = Animator.StringToHash("Attack");
+    static readonly int ThrowId = Animator.StringToHash("Throw");
+    static readonly int ThrowStateH = Animator.StringToHash("Shield_Throw");
     static readonly int IdleH = Animator.StringToHash("Idle");
     static readonly int JogH = Animator.StringToHash("Jog");
     static readonly int RaiseH = Animator.StringToHash("Shield_Raise");
@@ -94,12 +102,39 @@ public class PlayerController : MonoBehaviour
     {
         SweepHit();     // 扫掠检测跟动画帧走（Animator 在 Update 驱动），剑尖采样按渲染帧稳定推进
 
-        // ---- 投盾：空格。盾不在手上时丢弃这次输入（找回的办法要等后续步骤） ----
-        if (input.TakeThrowRequest() && shield != null && shield.InHand)
+        // ---- 投盾：空格只负责起手动画，盾在动画的某个进度才真的飞出去（手抬起来的那一刻） ----
+        if (input.TakeThrowRequest() && shield != null && shield.InHand && CanStartThrow())
         {
-            Vector3 aim = cam != null ? cam.transform.forward : transform.forward;
-            shield.Throw(aim.normalized);   // 盾内部按 flattenAim 决定是否用完整三维前向
+            anim.SetTrigger(ThrowId);
+            throwPending = true;
+            throwPendingTime = 0f;
         }
+
+        if (throwPending)
+        {
+            throwPendingTime += Time.deltaTime;
+            var st = anim.GetCurrentAnimatorStateInfo(0);
+            if (st.shortNameHash == ThrowStateH)
+            {
+                if (st.normalizedTime >= throwReleaseTime)
+                {
+                    Vector3 aim = cam != null ? cam.transform.forward : transform.forward;
+                    shield.Throw(aim.normalized);   // 盾内部按 flattenAim 决定是否用完整三维前向
+                    throwPending = false;
+                }
+            }
+            else if (throwPendingTime > throwPendingTimeout)
+            {
+                throwPending = false;               // 没能进入投掷状态（被打断/状态机没接上）：丢弃这次请求
+            }
+        }
+    }
+
+    /// 能否起手投掷：站/走时都行，攻击链与防御中不行
+    bool CanStartThrow()
+    {
+        int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
+        return h == IdleH || h == JogH;
     }
 
     void FixedUpdate()
