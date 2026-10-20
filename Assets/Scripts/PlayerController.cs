@@ -33,6 +33,9 @@ public class PlayerController : MonoBehaviour
     public ShieldThrow shield;          // 留空自动查找自身子树里的 ShieldThrow
     [Tooltip("动画到哪个进度时盾飞出去（Shield_OneShot 里约 0.17s 手抬到最高 → 0.2 左右）")]
     [Range(0f, 1f)] public float throwReleaseTime = 0.2f;
+    public float throwTurnSpeed = 900f;        // 起手转身用更快的角速度，保证在出手前转到位
+    public float maxReleaseAngle = 12f;        // 朝向与目标偏差小于这么多度才允许盾脱手（deg）
+    public float throwForceTime = 0.55f;       // 兜底：起手后超过这么久无论如何都扔出去（防永远转不到位）
     public float throwPendingTimeout = 0.6f;   // 触发后这么久没进入投掷状态就丢弃（防卡待命）
 
     [Header("击飞可互动物体（Prop 层：箱子等）")]
@@ -52,6 +55,8 @@ public class PlayerController : MonoBehaviour
 
     bool throwPending;      // 已起手投掷动画，等动画走到出手点
     float throwPendingTime;
+    bool throwAiming;       // 起手中：先把身体转到投掷方向（没移动输入时就是原地转身）
+    float throwAimYaw;      // 目标朝向（Y 轴欧拉角，已含 facingOffset）
 
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
     Vector3 prevTip;        // 上一渲染帧的剑尖位置（扫掠起点）
@@ -105,6 +110,11 @@ public class PlayerController : MonoBehaviour
         // ---- 投盾：空格只负责起手动画，盾在动画的某个进度才真的飞出去（手抬起来的那一刻） ----
         if (input.TakeThrowRequest() && shield != null && shield.InHand && CanStartThrow())
         {
+            // 起手：先记下这一击的方向，待会儿在 FixedUpdate 里把身体转过去
+            Vector3 aim = shield.AimDirection();
+            throwAimYaw = Mathf.Atan2(aim.x, aim.z) * Mathf.Rad2Deg + facingOffset;
+            throwAiming = true;
+
             anim.SetTrigger(ThrowId);
             throwPending = true;
             throwPendingTime = 0f;
@@ -116,11 +126,11 @@ public class PlayerController : MonoBehaviour
             var st = anim.GetCurrentAnimatorStateInfo(0);
             if (st.shortNameHash == ThrowStateH)
             {
-                if (st.normalizedTime >= throwReleaseTime)
+                if (st.normalizedTime >= throwReleaseTime && (FacingAligned() || throwPendingTime >= throwForceTime))
                 {
-                    Vector3 aim = cam != null ? cam.transform.forward : transform.forward;
-                    shield.Throw(aim.normalized);   // 盾内部按 flattenAim 决定是否用完整三维前向
+                    shield.Throw(shield.AimDirection());   // 盾内部按 flattenAim 决定是否用完整三维前向
                     throwPending = false;
+                    throwAiming = false;                  // 出手了，交还给正常的移动转向
                 }
             }
             else if (throwPendingTime > throwPendingTimeout)
@@ -128,6 +138,13 @@ public class PlayerController : MonoBehaviour
                 throwPending = false;               // 没能进入投掷状态（被打断/状态机没接上）：丢弃这次请求
             }
         }
+    }
+
+    /// 身体是否已经转到这一击的方向（还不够对准就再等两帧，别歪着把盾甩出去）
+    bool FacingAligned()
+    {
+        float err = Mathf.Abs(Mathf.DeltaAngle(transform.eulerAngles.y, throwAimYaw));
+        return err <= maxReleaseAngle;
     }
 
     /// 能否起手投掷：站/走时都行，攻击链与防御中不行
@@ -151,8 +168,8 @@ public class PlayerController : MonoBehaviour
             dir = (fwd * mv.y + right * mv.x).normalized;
         }
 
-        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)与防御(Raise/Lower)锁定；常态正常移动 ----
-        if (IsAttackChain() || IsGuarding() || !hasMove)
+        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手转身时锁定；常态正常移动 ----
+        if (IsAttackChain() || IsGuarding() || throwAiming || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -164,8 +181,13 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = v;
         }
 
-        // ---- 朝向：平滑转向移动方向（攻击链与防御全程锁定朝向不转） ----
-        if (hasMove && !IsAttackChain() && !IsGuarding())
+        // ---- 朝向：投掷起手时优先转去瞄准方向；否则平滑转向移动方向（攻击链与防御全程锁定不转） ----
+        if (throwAiming && !IsAttackChain() && !IsGuarding())
+        {
+            Quaternion aimTarget = Quaternion.Euler(0f, throwAimYaw, 0f);
+            rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, aimTarget, throwTurnSpeed * Time.fixedDeltaTime));
+        }
+        else if (hasMove && !IsAttackChain() && !IsGuarding())
         {
             float targetYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + facingOffset;
             Quaternion target = Quaternion.Euler(0f, targetYaw, 0f);

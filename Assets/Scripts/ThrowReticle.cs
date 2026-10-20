@@ -19,9 +19,10 @@ public class ThrowReticle : MonoBehaviour
     public float maxRange = 60f;        // 最长算多远
     public LayerMask castLayers = Physics.DefaultRaycastLayers;
 
-    LineRenderer ring;
-    GameObject ringObj;
-    const int RingSegments = 28;
+    GameObject discObj;
+    MeshRenderer discR;
+    Transform discT;
+    const int DiscSegments = 32;
 
     void Awake()
     {
@@ -29,24 +30,56 @@ public class ThrowReticle : MonoBehaviour
         if (shield == null) shield = GetComponentInParent<ShieldThrow>();
         if (aimCamera == null) aimCamera = Camera.main;
 
-        ringObj = new GameObject("ShieldImpactRing");
-        ringObj.hideFlags = HideFlags.HideAndDontSave;       // 不在 Hierarchy 里留残骸，也不参与保存
-        ring = ringObj.AddComponent<LineRenderer>();
-        ring.useWorldSpace = true;
-        ring.loop = true;
-        ring.positionCount = RingSegments;
-        ring.startWidth = ring.endWidth = 0.02f;
-        ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        ring.receiveShadows = false;
+        // 实心圆盘：单位半径的扇形 mesh，用 position/rotation/scale 摆放，不用每帧重建网格
+        discObj = new GameObject("ShieldImpactDisc");
+        discObj.hideFlags = HideFlags.HideAndDontSave;       // 不在 Hierarchy 里留残骸，也不参与保存
+        var mf = discObj.AddComponent<MeshFilter>();
+        mf.sharedMesh = MakeDisc(DiscSegments);
+        discR = discObj.AddComponent<MeshRenderer>();
         var mat = new Material(Shader.Find("Sprites/Default"));
-        mat.color = Color.white;
-        ring.material = mat;
-        ring.enabled = false;
+        mat.color = new Color(1f, 1f, 1f, 0.85f);
+        mat.renderQueue = 3000;                              // transparent，避免和不透明物体抢排序
+        discR.sharedMaterial = mat;
+        discR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        discR.receiveShadows = false;
+        discT = discObj.transform;
+        discObj.SetActive(false);
     }
 
     void OnDestroy()
     {
-        if (ringObj != null) Destroy(ringObj);
+        if (discObj != null) Destroy(discObj);
+    }
+
+    /// 生成一个朝向 +Z 的实心圆盘（半径 1），用位移/旋转/缩放摆到命中处
+    static Mesh MakeDisc(int segments)
+    {
+        var mesh = new Mesh { name = "ReticleDisc" };
+        var verts = new Vector3[segments + 1];
+        var uvs = new Vector2[segments + 1];
+        verts[0] = Vector3.zero;
+        uvs[0] = new Vector2(0.5f, 0.5f);
+        for (int i = 0; i < segments; i++)
+        {
+            float a = (float)i / segments * Mathf.PI * 2f;
+            float x = Mathf.Cos(a), y = Mathf.Sin(a);
+            verts[i + 1] = new Vector3(x, y, 0f);
+            uvs[i + 1] = new Vector2(x * 0.5f + 0.5f, y * 0.5f + 0.5f);
+        }
+        var tris = new int[segments * 3];
+        for (int i = 0; i < segments; i++)
+        {
+            int n = (i + 1 == segments) ? 1 : i + 2;
+            tris[i * 3] = 0;
+            tris[i * 3 + 1] = i + 1;
+            tris[i * 3 + 2] = n;
+        }
+        mesh.SetVertices(verts);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     void LateUpdate()
@@ -135,27 +168,20 @@ public class ThrowReticle : MonoBehaviour
 
     void DrawRing(Vector3 center, Vector3 normal, Color c)
     {
-        // 在被瞄准的表面上构造一对切向基，圆环贴着表面
-        Vector3 up = Mathf.Abs(Vector3.Dot(normal, Vector3.up)) > 0.95f ? Vector3.forward : Vector3.up;
-        Vector3 t1 = Vector3.Cross(normal, up).normalized;
-        Vector3 t2 = Vector3.Cross(normal, t1).normalized;
+        if (discT == null) return;
 
-        for (int i = 0; i < RingSegments; i++)
-        {
-            float a = (float)i / RingSegments * Mathf.PI * 2f;
-            Vector3 p = center + (t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a)) * ringRadius;
-            ring.SetPosition(i, p + normal * 0.01f);   // 抬一点，避免陷进表面里
-        }
-
-        ring.startColor = c;
-        ring.endColor = c;
-        ShowRing(true);
+        // +Z 对准被瞄准表面的法线 → 圆盘贴着表面；抬一点点避免陷进去打 z-fighting
+        discT.position = center + normal * 0.012f;
+        discT.rotation = Quaternion.LookRotation(normal);
+        discT.localScale = Vector3.one * ringRadius;
+        discR.sharedMaterial.color = c;
+        discObj.SetActive(true);
     }
 
     void ShowRing(bool on)
     {
-        if (ring == null) return;
-        ring.enabled = on;
+        if (discObj == null) return;
+        discObj.SetActive(on);
     }
 
 }
