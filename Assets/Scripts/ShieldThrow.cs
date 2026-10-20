@@ -29,6 +29,8 @@ public class ShieldThrow : MonoBehaviour
     [Tooltip("盾面法线（本地轴）。(0,0,0) 时按网格包围盒最薄的一轴自动判定")]
     public Vector3 spinLocalAxis = Vector3.zero;
     public float spinRate = 12f;            // 角速度 rad/s（只在出手瞬间赋一次，之后守恒）
+    [Tooltip("出手瞬间盾面放平、边缘朝前：法线竖直（水平弹道时正朝上），像美队盾牌那样绕竖直轴旋着飞出")]
+    public bool alignFaceToThrow = true;
 
     [Header("飞行物理")]
     [Range(0f, 1f)] public float gravityScale = 0.4f;   // 重力缩放（0=直线，1=完整抛物线）
@@ -246,6 +248,19 @@ public class ShieldThrow : MonoBehaviour
         // 先脱离骨骼层级，再挂刚体：飞行的刚体留在动画骨骼下会和骨骼姿态互相打架
         transform.SetParent(null, true);
         transform.SetPositionAndRotation(start, transform.rotation);
+
+        // 盾面平行于弹道、且"躺"在弹道所在的竖直平面关系里：法线取 up 去掉弹道分量
+        // （n ⊥ 弹道，且 n、弹道、竖直三者共面 → 法线与弹道张成的平面垂直于水平面）。
+        // 水平弹道时法线正好竖直朝上 → 盾面水平，像美队盾牌那样绕竖直轴旋着平飞
+        if (alignFaceToThrow)
+        {
+            Vector3 spinAxis = Vector3.up - Vector3.Project(Vector3.up, dir);
+            if (spinAxis.sqrMagnitude < 1e-6f)
+                spinAxis = transform.TransformDirection(DetectSpinAxisLocal());   // 近乎垂直上抛时兜底
+            Vector3 faceWorld = transform.TransformDirection(DetectSpinAxisLocal());
+            Quaternion align = Quaternion.FromToRotation(faceWorld, spinAxis.normalized);
+            transform.rotation = align * transform.rotation;
+        }
 
         EnsurePhysics();
         IgnoreSelf(true);       // 出手瞬间别踫到主角自己的根碰撞体/布娃娃部件
