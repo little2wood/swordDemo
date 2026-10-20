@@ -53,10 +53,9 @@ public class HitReaction : MonoBehaviour
     }
 
     /// 受击：把攻击方向转成倾倒轴，并按命中冲量（N·s）缩放晃动幅度
-    void OnHit(Vector3 dir, float impulse, bool fromThrow)
+    void OnHit(Vector3 dir, float impulse)
     {
         if (hp.IsDead) return;    // 死亡那一下由布娃娃接管，不做摆动
-        if (fromThrow) return;    // 投掷盾牌走独立方案（ShieldHitReaction），这里不叠加
 
         Vector3 flat = dir; flat.y = 0f;                    // 拍平：只取水平攻击方向
         if (flat.sqrMagnitude < 0.0001f) return;

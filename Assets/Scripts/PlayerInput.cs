@@ -23,6 +23,9 @@ public class PlayerInput : MonoBehaviour
     /// <summary>右键当前是否按住（防御意图）。持续状态，不是单帧事件。</summary>
     public bool GuardHeld { get; private set; }
 
+    /// <summary>右键按下的单帧意图：盾不在手上时用它触发召回。持续按住不会重复触发。</summary>
+    bool guardBuffered;
+
     /// <summary>
     /// 投盾：按住空格 = 进入瞄准（拉近镜头、突出预瞄点，不投掷）；
     /// 松开空格的那一下 = 真的甩出去。
@@ -70,6 +73,7 @@ public class PlayerInput : MonoBehaviour
 
         // 鼠标右键：按住即防御，松开即收盾
         GuardHeld = mouse != null && mouse.rightButton.isPressed;
+        if (mouse != null && mouse.rightButton.wasPressedThisFrame) guardBuffered = true;   // 按下瞬间：供召回用
 
         // 空格：按住=瞄准，松开=掷出
         bool held = kb != null && kb.spaceKey.isPressed;
@@ -91,6 +95,14 @@ public class PlayerInput : MonoBehaviour
     {
         bool v = AttackBuffered;
         AttackBuffered = false;
+        return v;
+    }
+
+    /// <summary>消费右键按下请求：返回本帧是否按下了右键，并清除标志。</summary>
+    public bool TakeGuardRequest()
+    {
+        bool v = guardBuffered;
+        guardBuffered = false;
         return v;
     }
 

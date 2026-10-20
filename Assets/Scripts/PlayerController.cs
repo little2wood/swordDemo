@@ -134,6 +134,10 @@ public class PlayerController : MonoBehaviour
         // ---- 投盾：按住空格 = 瞄准（拉近镜头、突出预瞄点），松开 = 掷出 ----
         bool canThrow = shield != null && shield.InHand && CanStartThrow();
 
+        // ---- 右键复用：盾在手=举盾防御（见下方 Guard 参数）；盾不在手（飞行中/已落地）=召回 ----
+        if (shield != null && !shield.InHand && input.TakeGuardRequest())
+            shield.StartReturn();
+
         if (input.ThrowHeld && canThrow)
         {
             if (!aimMode) BeginAim();

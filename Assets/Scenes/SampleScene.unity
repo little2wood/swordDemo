@@ -1143,31 +1143,6 @@ MonoBehaviour:
   stiffness: 150
   damping: 12
   debugLog: 0
---- !u!114 &469687800
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 469687787}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2cf1a1017a1848a41a1854f6de7e813a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ShieldHitReaction
-  health: {fileID: 469687794}
-  ragdoll: {fileID: 469687795}
-  refImpulse: 80
-  minScale: 0.35
-  impulseStrength: 200
-  maxAngle: 22
-  stiffness: 150
-  damping: 12
-  refLeverArm: 0.35
-  minLeverScale: 0.4
-  childWeight: 0.5
-  grandChildWeight: 0.25
-  debugLog: 0
 --- !u!1 &471596838 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -5912894932395400830, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
@@ -2297,9 +2272,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 469687797}
-    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 469687800}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 642556237}
@@ -4749,7 +4721,7 @@ MonoBehaviour:
   shield: {fileID: 0}
   throwReleaseTime: 0.2
   throwTurnSpeed: 900
-  maxReleaseAngle: 12
+  maxReleaseAngle: 14
   throwForceTime: 0.55
   throwPendingTimeout: 0.6
   throwMoveLockTime: 0.45
@@ -4861,7 +4833,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::HitReaction
   health: {fileID: 0}
   animator: {fileID: 0}
-  impulseStrength: 500
+  impulseStrength: 1000
   maxAngle: 14
   refImpulse: 28
   minScale: 0.35

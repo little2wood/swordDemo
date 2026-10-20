@@ -10,7 +10,7 @@ using UnityEngine;
 /// </summary>
 public class ShieldThrow : MonoBehaviour
 {
-    public enum State { InHand, Flying, Loose }
+    public enum State { InHand, Flying, Loose, Returning }
 
     [Header("引用（留空自动查找）")]
     public Transform owner;                 // 主角（含 PlayerController 的那个根物体）
@@ -40,6 +40,14 @@ public class ShieldThrow : MonoBehaviour
     public float maxThrowSpeed = 22f;   // 用于冲量计算的速度上限（防卡顿帧/峰值把目标弹射上天）
     public float throwDamage = 5f;      // 一发盾牌的伤害
 
+    [Header("回收")]
+    [Tooltip("盾牌飞回手上的速度（m/s）：按当前距离算飞行时长")]
+    public float recoverSpeed = 18f;
+    [Tooltip("回收弧线的拱起高度（m）：0=直线吸回，越大抛得越高")]
+    public float recoverArc = 0.8f;
+    [Tooltip("回收时把盾挂在 socket 之前，先跟到离 socket 这么近")]
+    public float recoverSnapDist = 0.12f;
+
     [Header("飞行物理")]
     [Range(0f, 1f)] public float gravityScale = 0.4f;   // 重力缩放（0=直线，1=完整抛物线）
     public float flightDrag = 0.02f;                    // 线性阻尼（飞行衰减）
@@ -63,6 +71,12 @@ public class ShieldThrow : MonoBehaviour
 
     float restTimer;
     bool firstHitFired;     // 本次飞行是否已报告过第一次碰撞
+
+    // 回收插值状态：从 returnFrom 沿一条拱起的弧线飞回 socket
+    Vector3 returnFrom;
+    Quaternion returnFromRot;
+    float returnT;
+    float returnDuration;
 
     // 一次飞行内的命中去重：同一个箱子/同一个敌人只结算一次，避免弹跳反复触发
     readonly HashSet<Rigidbody> hitThisThrow = new HashSet<Rigidbody>();
@@ -144,6 +158,65 @@ public class ShieldThrow : MonoBehaviour
         box.center = mesh.bounds.center;
     }
 
+    // ---------- 回收 ----------
+
+    /// <summary>
+    /// 召回盾牌：从当前位置沿一条拱起的弧线飞回握持 socket。
+    /// 回程切成 kinematic —— 撞到 Prop 层箱子仍会把它推开（真实碰撞），
+    /// 但盾自己不受反作用力、不减速、不偏转，稳稳飞回手上。
+    /// </summary>
+    public void StartReturn()
+    {
+        if (Current != State.Flying && Current != State.Loose) return;
+        if (socketParent == null) { SetIdle(); return; }
+
+        returnFrom = transform.position;
+        returnFromRot = transform.rotation;
+        returnT = 0f;
+        float dist = Vector3.Distance(returnFrom, socketParent.TransformPoint(socketLocalPos));
+        returnDuration = Mathf.Max(0.05f, dist / Mathf.Max(0.01f, recoverSpeed));
+
+        if (rb != null) rb.isKinematic = true;   // detectCollisions 保持 true：照样撞飞箱子
+        Current = State.Returning;
+    }
+
+    /// 回收落位：贴回握持 socket 并回到"在手"静止态
+    void FinishReturn()
+    {
+        if (socketParent != null)
+        {
+            transform.SetParent(socketParent, false);
+            transform.localPosition = socketLocalPos;
+            transform.localRotation = socketLocalRot;
+            transform.localScale = socketLocalScale;
+        }
+        SetIdle();
+    }
+
+    void Update()
+    {
+        if (Current != State.Returning) return;
+        if (socketParent == null) { FinishReturn(); return; }
+
+        returnT += Time.deltaTime;
+        float k = returnDuration > 0.0001f ? Mathf.Clamp01(returnT / returnDuration) : 1f;
+
+        Vector3 targetPos = socketParent.TransformPoint(socketLocalPos);
+        Quaternion targetRot = socketParent.rotation * socketLocalRot;
+
+        // 位置：直线插值 + 正弦拱起（两端为 0、中点最高）
+        Vector3 flat = Vector3.Lerp(returnFrom, targetPos, k);
+        float arc = recoverArc * Mathf.Sin(k * Mathf.PI);
+        transform.position = flat + Vector3.up * arc;
+
+        // 朝向：回程姿态转回握持姿态，同时叠加自旋
+        Quaternion baseRot = Quaternion.Slerp(returnFromRot, targetRot, k);
+        Quaternion spin = Quaternion.AngleAxis(spinRate * returnT * Mathf.Rad2Deg, DetectSpinAxisLocal());
+        transform.rotation = baseRot * spin;
+
+        if (k >= 1f) FinishReturn();
+    }
+
     void FixedUpdate()
     {
         if (Current != State.Flying) return;
@@ -198,7 +271,7 @@ public class ShieldThrow : MonoBehaviour
             return;
         }
 
-        // ---- 敌人：按被击中的骨骼做局部受力反馈 ----
+        // ---- 敌人：和挥砍/爪击走同一套受击反馈（HitReaction 统一上半身摆动） ----
         var hp = col.GetComponentInParent<Health>();
         if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
         if (!hitThisThrowHealth.Add(hp)) return;    // 这次飞行已结算过该目标
@@ -206,10 +279,7 @@ public class ShieldThrow : MonoBehaviour
         Vector3 dir = lastVel.sqrMagnitude > 1e-6f ? lastVel.normalized : transform.forward;
         float impulse = PropImpulse.Magnitude(lastVel, shieldMass);
 
-        var reaction = col.GetComponentInParent<ShieldHitReaction>();
-        if (reaction != null) reaction.ReactAt(point, dir, impulse);
-
-        hp.TakeDamage(throwDamage, dir, impulse, point, true);   // 致死时自动交给原 Ragdoll 方案
+        hp.TakeDamage(throwDamage, dir, impulse, point);   // 致死时自动交给原 Ragdoll 方案
     }
 
     // ---------- 出手 ----------

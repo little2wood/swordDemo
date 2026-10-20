@@ -24,15 +24,16 @@ public class ShieldHitReaction : MonoBehaviour
     [Range(0f, 1f)] public float minScale = 0.35f; // 最轻击的幅度下限
 
     [Header("弹簧手感")]
-    public float impulseStrength = 200f;            // 满档倾倒角速度（deg/s）
-    [Range(0f, 60f)] public float maxAngle = 22f; // 单根骨骼最大倾倒角（放开 pelvis，可比挥砍的 14° 大）
+    [Tooltip("满档倾倒角速度（deg/s）。盾是重型钝器，冲量量级远大于挥砍，这里比 HitReaction 的 200 高一档")]
+    public float impulseStrength = 420f;           // 满档倾倒角速度（deg/s）
+    [Range(0f, 60f)] public float maxAngle = 30f; // 单根骨骼最大倾倒角（放开 pelvis，可比挥砍的 14° 大）
     public float stiffness = 150f;                  // 刚度：越大拉回越快
     public float damping = 12f;                      // 阻尼：越小荡的次数越多（欠阻尼）
 
     [Header("力臂缩放")]
     [Tooltip("参考力臂长度（m）：偏心命中超过它按满档算。砸四肢末端比砸关节根转得更狠")]
     public float refLeverArm = 0.35f;
-    [Range(0f, 1f)] public float minLeverScale = 0.4f;   // 正中骨骼原点时保留的比例
+    [Range(0f, 1f)] public float minLeverScale = 0.7f;   // 正中骨骼原点时保留的比例
 
     [Header("子链传导")]
     [Range(0f, 1f)] public float childWeight = 0.5f;        // 子骨
