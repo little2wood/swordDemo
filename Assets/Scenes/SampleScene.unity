@@ -4882,9 +4882,9 @@ MonoBehaviour:
   maxGuard: 100
   guardRegenTime: 3
   blockArcDeg: 120
-  guardCostPerDamage: 1
+  guardCostPerDamage: 50
   minGuardCost: 1
-  requireShieldInHand: 1
+  requireShieldInHand: 0
   breakStunTime: 1.067
 --- !u!4 &1079367453 stripped
 Transform:

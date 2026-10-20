@@ -22,14 +22,14 @@ public class PlayerGuard : MonoBehaviour
     public float guardRegenTime = 3f;
 
     [Header("格挡")]
-    [Tooltip("可格挡的正面扇区总角度（deg）：攻击来向与角色正面的夹角在一半以内才算挡住")]
+    [Tooltip("防御有效的朝向范围（半角，deg）：攻击来向与角色正面的夹角在这个角度以内都算挡住。\n120 = 正面 ±120°（即正面 240° 的扇区，只有背后 ±60° 才挡不住）")]
     public float blockArcDeg = 120f;
     [Tooltip("每 1 点伤害消耗多少架势值")]
     public float guardCostPerDamage = 1f;
     [Tooltip("单次格挡至少消耗多少架势值（防止极小额攻击被无限格挡）")]
     public float minGuardCost = 1f;
-    [Tooltip("盾不在手时不算防御：举盾动画照播，但不吸收伤害")]
-    public bool requireShieldInHand = true;
+    [Tooltip("勾选后：盾不在手（已投出/被打掉）时举盾不算防御、挡不住伤害。\n默认不勾 —— 只要处于防御状态就挡，不管盾在不在手上")]
+    public bool requireShieldInHand = false;
 
     [Header("破防")]
     [Tooltip("破防硬直时长（秒）：期间禁止一切操作，默认与 Idle_Shield_Break 动画等长")]
@@ -101,7 +101,8 @@ public class PlayerGuard : MonoBehaviour
 
     /// <summary>
     /// 伤害拦截（订阅 Health.OnDamageIntercept）：
-    /// 举盾 + 盾在手 + 正面朝向攻击 → 吸收这次伤害（不扣血），扣架势值；架势归零则破防。
+    /// 处于防御状态 + 攻击来向在角色正面 blockArcDeg 以内 → 吸收这次伤害（不扣血），扣架势值；架势归零则破防。
+    /// 不做"打没打在盾面上"的判定 —— 判定只看防御状态与朝向。
     /// 破防那一下同样被吸收 —— 破防的代价是掉盾与硬直，不是掉血。
     /// </summary>
     bool TryBlock(Vector3 hitDir, float amount)
@@ -123,8 +124,8 @@ public class PlayerGuard : MonoBehaviour
     }
 
     /// <summary>
-    /// 攻击是否来自正面扇区：hitDir 是受力方向（攻击者 → 我），
-    /// 所以"攻击者在哪个方向"是 -hitDir，与角色正面做夹角判定。
+    /// 攻击是否落在防御扇区内：hitDir 是受力方向（攻击者 → 我），
+    /// 所以"攻击者在哪个方向"是 -hitDir，与角色正面的夹角 ≤ blockArcDeg 就算挡住。
     /// </summary>
     bool FacingAttack(Vector3 hitDir)
     {
@@ -133,7 +134,7 @@ public class PlayerGuard : MonoBehaviour
         if (f.sqrMagnitude < 1e-6f || toAttacker.sqrMagnitude < 1e-6f) return true;   // 退化（垂直攻击）时放行
         f.Normalize();
         toAttacker.Normalize();
-        return Vector3.Dot(f, toAttacker) >= Mathf.Cos(blockArcDeg * 0.5f * Mathf.Deg2Rad);
+        return Vector3.Dot(f, toAttacker) >= Mathf.Cos(Mathf.Clamp(blockArcDeg, 0f, 180f) * Mathf.Deg2Rad);
     }
 
     void Break()
