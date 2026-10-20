@@ -1077,7 +1077,6 @@ MonoBehaviour:
   - {fileID: 1232814761}
   - {fileID: 1033393850}
   deathImpulse: 10
-  upwardBias: 0.7
   randomTorque: 4
   deathDrag: 1
   deathSleepThreshold: 0.08
@@ -4706,7 +4705,7 @@ MonoBehaviour:
   moveSpeed: 6
   turnSpeed: 540
   facingOffset: 0
-  attackDamage: 20
+  attackDamage: 1
   bladeBase: {fileID: 0}
   bladeTip: {fileID: 0}
   bladeRadius: 0.05
@@ -4768,7 +4767,6 @@ MonoBehaviour:
   - {fileID: 471596839}
   - {fileID: 1869625249}
   deathImpulse: 10
-  upwardBias: 0.7
   randomTorque: 4
   deathDrag: 1
   deathSleepThreshold: 0.08
