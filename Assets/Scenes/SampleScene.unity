@@ -3361,14 +3361,19 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CapeCloth
   cols: 7
   rows: 10
-  width: 0.4
   length: 0.7
-  anchorHeight: 0.25
-  anchorBack: -0.15
+  topWidth: 0.42
+  bottomWidth: 0.85
+  shoulderHeight: 0.27
+  neckArch: 0.065
+  shoulderBack: -0.11
+  neckBack: -0.055
+  keepBehindBack: 1
+  frontLimit: 0
   anchorBone: {fileID: 0}
   gravity: -9.8
   damping: 0.985
-  constraintIterations: 4
+  constraintIterations: 8
   windStrength: 1.5
   windFrequency: 1.6
   moveWindScale: 0.9

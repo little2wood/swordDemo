@@ -1,8 +1,9 @@
 using UnityEngine;
 
 /// <summary>
-/// 披风布料（Verlet/PBD）：粒子 + 距离约束（横向/纵向结构 + 对角剪切），顶行钉在 anchorBone（spine_02）
-/// 的本地偏移处，转身/前倾/攻击时披风顶部自动跟随躯干动画。
+/// 披风布料（Verlet/PBD）：粒子 + 距离约束（横向/纵向结构 + 对角剪切）。
+/// 顶行不是水平直线，而是"肩颈弧线"：两端盖住肩尖（upperarm 外侧）、中段上拱包住后颈（neck_01 上方），
+/// 钉在 anchorBone（spine_02）本地坐标上跟随躯干动画；行宽从肩到下摆线性放宽，静置就是梯形披风轮廓。
 /// 每帧：Verlet 积分（重力 + 风） → 约束迭代（PBD，与身体碰撞推离交替） → 钉锚点 → 写回网格。
 /// 风场 = 环境微风（双正弦） + 锚点运动相对风：跑动后飘、原地转身甩摆、下落上飘都由锚点速度驱动
 /// （比只看刚体速度多了转向与动画起伏，且包含竖直分量）。
@@ -12,12 +13,25 @@ public class CapeCloth : MonoBehaviour
     [Header("网格尺寸")]
     public int cols = 7;            // 列（宽向粒子数）
     public int rows = 10;           // 行（长向粒子数）
-    public float width = 0.4f;      // 挂肩宽度（m）
     public float length = 0.7f;     // 垂落长度（m）
 
-    [Header("锚定（相对锚骨的本地偏移）")]
-    public float anchorHeight = 0.25f;  // 顶行相对 spine_02 的高度（约肩线）
-    public float anchorBack = -0.10f;   // 贴背偏移（实测 spine_02 local +Z 朝模型胸前，负值才落到背后）
+    [Header("披风轮廓（相对锚骨 spine_02 的本地坐标，按本骨架实测标定）")]
+    [Tooltip("肩线全宽（m）：顶行两端落在肩尖（upperarm x=±0.192）略外侧")]
+    public float topWidth = 0.42f;
+    [Tooltip("下摆全宽（m）：明显大于肩宽才有披风感；行宽从上到下线性渐宽，静置即梯形轮廓。\n风压会让下摆后摆收窄，实际观感约为本值的 7~8 成")]
+    public float bottomWidth = 0.85f;
+    [Tooltip("肩线高度（m）：肩尖相对 spine_02 的高度（实测 upperarm y=0.269）")]
+    public float shoulderHeight = 0.27f;
+    [Tooltip("后颈上拱（m）：顶行中段比肩线抬高多少，盖住后颈（neck_01 y=0.314 → 中段=肩线+本值）")]
+    public float neckArch = 0.065f;
+    [Tooltip("肩尖贴背偏移（m）：spine_02 本地 +Z 朝模型胸前，负值朝背后")]
+    public float shoulderBack = -0.11f;
+    [Tooltip("后颈贴背偏移（m）：顶行中段更贴近脊柱，包住后颈")]
+    public float neckBack = -0.055f;
+    [Tooltip("防缠绕：粒子不许越过身体冠状面跑到胸前（推离碰撞是单向的，布料可能顺体侧绕到前面卡住）")]
+    public bool keepBehindBack = true;
+    [Tooltip("前方界限（沿 spine.forward 的有符号距离）：粒子超过它就拉回，0=不许越过脊柱冠状面")]
+    public float frontLimit = 0f;
 
     [Header("引用（留空自动查找 spine_02）")]
     public Transform anchorBone;
@@ -25,7 +39,7 @@ public class CapeCloth : MonoBehaviour
     [Header("物理（Verlet/PBD）")]
     public float gravity = -9.8f;           // 重力加速度
     [Range(0.8f, 1f)] public float damping = 0.985f;    // 速度保留率（1=无阻尼）
-    public int constraintIterations = 4;    // 距离约束求解迭代次数
+    public int constraintIterations = 8;    // 距离约束求解迭代次数：越多布越硬挺、越不容易折叠塌陷
 
     [Header("风场")]
     public float windStrength = 1.5f;       // 环境微风强度（m/s²）
@@ -39,8 +53,8 @@ public class CapeCloth : MonoBehaviour
     [Tooltip("关闭后回到纯布料（会穿模）")]
     public bool bodyCollision = true;
     [Tooltip("各推离球半径（m）：球挂在对应骨骼上跟着动画走，粒子被推到球面外")]
-    public float torsoRadius = 0.16f;   // spine_03（上胸）
-    public float hipRadius = 0.14f;     // pelvis（骨盆）
+    public float torsoRadius = 0.12f;   // spine_03（上胸）：半径贴着躯干半厚，太大披风会飘离后背
+    public float hipRadius = 0.13f;     // pelvis（骨盆）
     public float headRadius = 0.11f;    // Head（低头/受击时防穿）
     public float thighRadius = 0.08f;   // thigh_l / thigh_r（大腿：跑动时防披风穿腿）
 
@@ -134,25 +148,54 @@ public class CapeCloth : MonoBehaviour
         }
     }
 
-    /// 粒子初始位置：顶行按锚点展开，其余行竖直下垂
+    /// 防缠绕：把越过身体前方冠状面的粒子拉回（披风只允许待在背后，绕到胸前就永远卡在前面了）
+    void ClampBehindBack()
+    {
+        if (!keepBehindBack || spine == null) return;
+        Vector3 fwd = spine.forward;
+        Vector3 origin = spine.position;
+        for (int i = cols; i < halfCount; i++)      // 顶行是锚点，不参与
+        {
+            float along = Vector3.Dot(pos[i] - origin, fwd);
+            if (along > frontLimit)
+                pos[i] -= fwd * (along - frontLimit);
+        }
+    }
+
+    /// 粒子初始位置：顶行是肩颈弧线，往下逐行放宽（梯形）——约束静止长度直接取自这份轮廓
     void InitParticles()
     {
         int n = cols * rows;
         pos = new Vector3[n];
         prevPos = new Vector3[n];
         anchorLocals = new Vector3[cols];
-        for (int c = 0; c < cols; c++)
-        {
-            float x = Mathf.Lerp(-width / 2f, width / 2f, (float)c / (cols - 1));
-            anchorLocals[c] = new Vector3(x, anchorHeight, anchorBack);
-            Vector3 anchorW = spine.TransformPoint(anchorLocals[c]);
-            for (int r = 0; r < rows; r++)
-                pos[r * cols + c] = anchorW + Vector3.down * (length * r / (rows - 1));
-        }
+        for (int r = 0; r < rows; r++)
+            for (int c = 0; c < cols; c++)
+            {
+                Vector3 local = RowLocal(r, c);
+                if (r == 0) anchorLocals[c] = local;
+                pos[r * cols + c] = spine.TransformPoint(local);
+            }
         System.Array.Copy(pos, prevPos, n);
     }
 
-    /// 距离约束：横向 + 纵向（结构） + 每格两条对角线（剪切）——布不再能被剪成菱形/对折成纸片
+    /// 第 r 行第 c 列粒子的锚骨本地坐标：
+    /// 横向按本行宽度展开（行宽从肩到下摆线性放宽）、高度按行下垂、
+    /// 顶行（r=0）中段上拱 neckArch 盖住后颈、贴背深度从肩尖到后颈渐变
+    Vector3 RowLocal(int r, int c)
+    {
+        float tc = (float)c / (cols - 1);
+        float tr = (float)r / (rows - 1);
+        float arch = Mathf.Sin(tc * Mathf.PI);                          // 0=肩尖 1=后颈
+        float rw = Mathf.Lerp(topWidth, bottomWidth, tr);
+        return new Vector3(
+            Mathf.Lerp(-rw / 2f, rw / 2f, tc),
+            shoulderHeight + neckArch * arch - length * tr,
+            Mathf.Lerp(shoulderBack, neckBack, arch));
+    }
+
+    /// 距离约束：横向 + 纵向（结构） + 每格两条对角线（剪切） + 隔粒长程（抗弯）——
+    /// 布不再能被剪成菱形、对折成纸片，也不容易被风压卷成杯状
     void BuildConstraints()
     {
         var list = new System.Collections.Generic.List<Constraint>();
@@ -167,6 +210,8 @@ public class CapeCloth : MonoBehaviour
                     list.Add(MakeCon(i, i + cols + 1));                 // 对角 \（抗剪切）
                     list.Add(MakeCon(i + 1, i + cols));                 // 对角 /（抗剪切）
                 }
+                if (c + 2 < cols) list.Add(MakeCon(i, i + 2));          // 隔粒横向（抗弯）
+                if (r + 2 < rows) list.Add(MakeCon(i, i + 2 * cols));   // 隔粒纵向（抗弯）
             }
         cons = list.ToArray();
     }
@@ -231,7 +276,12 @@ public class CapeCloth : MonoBehaviour
 
     void LateUpdate()
     {
-        if (mesh == null || pos == null || cons == null) return;
+        // 自愈：Play 中途重编译（域重载）会把非序列化字段清空且不重跑 Awake，这里懒重建
+        if (mesh == null || pos == null || cons == null)
+        {
+            BuildNow();
+            if (mesh == null || pos == null || cons == null) return;
+        }
 
         float dt = Mathf.Min(Time.deltaTime, 1f / 30f);
         time += dt;
@@ -281,6 +331,7 @@ public class CapeCloth : MonoBehaviour
                 else { pos[con.a] += delta * (diff * 0.5f); pos[con.b] -= delta * (diff * 0.5f); }
             }
             PushOutOfBody();
+            ClampBehindBack();
         }
 
         // ---- 顶行锚定：强制对齐锚骨世界位置（最后执行；锚点位移不产生粒子速度） ----
