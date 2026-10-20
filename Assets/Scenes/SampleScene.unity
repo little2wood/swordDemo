@@ -986,6 +986,7 @@ MonoBehaviour:
   clawMass: 2.5
   maxClawSpeed: 8
   facingOffset: 0
+  parryWindowStart: 0.25
 --- !u!136 &469687790
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -1143,6 +1144,35 @@ MonoBehaviour:
   stiffness: 150
   damping: 12
   debugLog: 0
+--- !u!95 &469687798 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+  m_PrefabInstance: {fileID: 684313087}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &469687800
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 469687787}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 92c49d3421e07c64e9148c9a327bc4e3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyStagger
+  animator: {fileID: 469687798}
+  body: {fileID: 469687791}
+  slowScale: 0.1
+  parryHoldTime: 3
+  launchDistance: 3
+  launchArcHeight: 0.8
+  groundProbe: 0.12
+  groundLayer:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  launchTimeout: 2.5
+  landingTimeout: 3
 --- !u!1 &471596838 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -5912894932395400830, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
@@ -2272,6 +2302,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 469687797}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 469687800}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 1f6bb956d92a1da48a0b5822a895e669, type: 3}
       insertIndex: -1
       addedObject: {fileID: 642556237}
@@ -4444,6 +4477,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1076808061}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808063}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1865327341}
@@ -4886,6 +4922,22 @@ MonoBehaviour:
   minGuardCost: 1
   requireShieldInHand: 0
   breakStunTime: 1.067
+--- !u!114 &1076808063
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eb9a7665128cdef488fa2606bb8cb7b5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerParry
+  animator: {fileID: 1076808053}
+  parryRange: 3.5
+  holdTime: 3
+  riposteTime: 1.1
 --- !u!4 &1079367453 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7378292883642932892, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}

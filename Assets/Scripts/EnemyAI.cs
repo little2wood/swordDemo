@@ -37,8 +37,13 @@ public class EnemyAI : MonoBehaviour
     [Header("朝向")]
     public float facingOffset = 0f;     // 模型正面与 transform.forward 的夹角；若角色倒着走改成 180
 
+    [Header("弹反")]
+    [Tooltip("攻击动画播到这个进度之后才算\"攻击期间\"（前摇结束），玩家此时进防御即可弹反")]
+    [Range(0f, 1f)] public float parryWindowStart = 0.25f;
+
     Rigidbody rb;
     Animator anim;
+    EnemyStagger stagger;
 
     float nextAttackTime;
     Vector3 prevHandL, prevHandR;   // 上一渲染帧两手掌位置（扫掠起点）
@@ -61,6 +66,19 @@ public class EnemyAI : MonoBehaviour
         }
         if (handL == null) handL = FindDeep(transform, "hand_l");
         if (handR == null) handR = FindDeep(transform, "hand_r");
+        if (stagger == null) stagger = GetComponent<EnemyStagger>();
+    }
+
+    /// <summary>
+    /// 是否处于可弹反的"攻击期间"：正在播攻击动画，且已过前摇（进度 ≥ parryWindowStart）。
+    /// 只有这段时间里玩家按下防御才判定弹反 —— 手掌扫掠之外的伤害源不参与。
+    /// </summary>
+    public bool IsInParryWindow()
+    {
+        if (stagger != null && stagger.IsLocked) return false;
+        var st = anim.GetCurrentAnimatorStateInfo(0);
+        if (st.shortNameHash != AttackStateH) return false;
+        return st.normalizedTime >= parryWindowStart && st.normalizedTime < 1.5f;
     }
 
     void Update()
@@ -71,6 +89,14 @@ public class EnemyAI : MonoBehaviour
     void FixedUpdate()
     {
         if (target == null) return;
+
+        // 被弹反/撞飞/起身期间：完全停手（不走、不转身、不攻击）。
+        // 这里不能 Stop()：撞飞阶段位移来自 EnemyStagger 给的初速度，每帧清零会把人钉在原地。
+        if (stagger != null && stagger.IsLocked)
+        {
+            anim.SetBool(MovingId, false);
+            return;
+        }
 
         Vector3 toTarget = target.position - transform.position;
         toTarget.y = 0f;
@@ -119,6 +145,14 @@ public class EnemyAI : MonoBehaviour
     /// </summary>
     void SweepHands()
     {
+        if (stagger != null && stagger.IsLocked)   // 被弹反后这一击不再结算伤害
+        {
+            sweepInit = false;
+            playerHitDone = false;
+            hitPropsThisSwipe.Clear();
+            return;
+        }
+
         if (target == null || (!IsAttacking()) || (handL == null && handR == null))
         {
             sweepInit = false;

@@ -61,6 +61,7 @@ public class PlayerController : MonoBehaviour
     float throwLockTimer;   // 出手后的移动锁定剩余时间：等投掷动画播完，避免平移不播走路动画
     ThirdPersonCamera thirdPersonCamera;
     PlayerGuard guard;      // 防御/架势/破防：破防硬直要并进下面的各种锁定
+    PlayerParry parry;      // 弹反：定身期间锁移动，左键走反击而不是普通挥砍
     bool throwAiming;       // 松开空格后的起手阶段：把身体转向投掷方向（瞄准按住期间不转，交给正常移动）
     float throwAimYaw;      // 目标朝向（Y 轴欧拉角，已含 facingOffset）
 
@@ -109,6 +110,7 @@ public class PlayerController : MonoBehaviour
         if (shield == null) shield = GetComponentInChildren<ShieldThrow>(true);
         if (thirdPersonCamera == null) thirdPersonCamera = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
         if (guard == null) guard = GetComponentInParent<PlayerGuard>();
+        if (parry == null) parry = GetComponentInParent<PlayerParry>();
 
         // 盾飞行中第一次撞到东西 → 相机提前结束投掷观察期
         if (shield != null) shield.FlightFirstHit += OnShieldFirstHit;
@@ -133,15 +135,19 @@ public class PlayerController : MonoBehaviour
         // ---- 投盾：松开空格的那一帧调用（TakeThrowRelease 每帧都要消费一次，避免事件堆积） ----
         if (released && aimMode) ReleaseThrow();
 
-        // ---- 投盾：按住空格 = 瞄准（拉近镜头、突出预瞄点），松开 = 掷出 ----
-        bool canThrow = shield != null && shield.InHand && CanStartThrow() && !IsStunned();
+        bool stunnedUp = IsStunned();
+        bool parryHoldUp = parry != null && parry.IsHolding;
 
-        // ---- 右键复用：盾在手=举盾防御（见下方 Guard 参数）；盾不在手（飞行中/已落地）=召回 ----
-        //      破防硬直期间照常消费掉这次按下但不执行，否则硬直一结束盾会自己飞回来
-        if (shield != null && !shield.InHand)
+        // ---- 投盾：按住空格 = 瞄准（拉近镜头、突出预瞄点），松开 = 掷出 ----
+        bool canThrow = shield != null && shield.InHand && CanStartThrow() && !stunnedUp && !parryHoldUp;
+
+        // ---- 右键按下的那一帧：盾在手=尝试弹反（进入防御的瞬间）；盾不在手（飞行中/已落地）=召回 ----
+        //      破防硬直/弹反定身期间照常消费掉这次按下但不执行
+        bool guardPressed = input.TakeGuardRequest();
+        if (guardPressed && !stunnedUp && !parryHoldUp)
         {
-            bool recall = input.TakeGuardRequest();
-            if (recall && !IsStunned()) shield.StartReturn();
+            if (shield != null && !shield.InHand) shield.StartReturn();
+            else if (parry != null) parry.TryParry();
         }
 
         if (input.ThrowHeld && canThrow)
@@ -229,6 +235,7 @@ public class PlayerController : MonoBehaviour
         if (throwLockTimer > 0f) throwLockTimer -= Time.fixedDeltaTime;
 
         bool stunned = IsStunned();     // 破防硬直：禁止一切操作（移动/转向/攻击/投掷/举盾/召回）
+        bool parryHold = parry != null && parry.IsHolding;   // 弹反定身：不能移动/转向/投掷/召回，但左键可以打反击
 
         Vector2 mv = input.MoveInput;
         bool hasMove = mv.sqrMagnitude > 0.01f;
@@ -244,7 +251,7 @@ public class PlayerController : MonoBehaviour
 
         // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手与出手后的收势才锁定。
         //      瞄准（按住空格）期间照常移动，身体朝向也交给正常移动逻辑 ----
-        if (IsAttackChain() || IsGuarding() || stunned || throwPending || throwLockTimer > 0f || !hasMove)
+        if (IsAttackChain() || IsGuarding() || stunned || parryHold || throwPending || throwLockTimer > 0f || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -257,12 +264,12 @@ public class PlayerController : MonoBehaviour
         }
 
         // ---- 朝向：只在投掷起手阶段转去投掷方向；其余时候平滑转向移动方向（攻击链与防御全程锁定不转） ----
-        if (throwAiming && !IsAttackChain() && !IsGuarding() && !stunned)
+        if (throwAiming && !IsAttackChain() && !IsGuarding() && !stunned && !parryHold)
         {
             Quaternion aimTarget = Quaternion.Euler(0f, throwAimYaw, 0f);
             rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, aimTarget, throwTurnSpeed * Time.fixedDeltaTime));
         }
-        else if (hasMove && !IsAttackChain() && !IsGuarding() && !stunned)
+        else if (hasMove && !IsAttackChain() && !IsGuarding() && !stunned && !parryHold)
         {
             float targetYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + facingOffset;
             Quaternion target = Quaternion.Euler(0f, targetYaw, 0f);
@@ -270,17 +277,23 @@ public class PlayerController : MonoBehaviour
         }
 
         // ---- 动画参数：投掷起手/收势期间不报"在移动"，否则会原地踩跑步动画 ----
-        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned);
+        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold);
 
         // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起）----
-        // 破防硬直期间冻结 Guard 参数：AnyState→Idle_Shield_Break 的优先级低于具体状态之间的过渡，
-        // 举盾/收盾之间一旦还能互相切（Guard 变了），破防动画就会被抢掉、根本播不出来。
-        if (!stunned) anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
+        // 破防硬直/弹反定身期间冻结 Guard 参数：AnyState 过渡的优先级低于具体状态之间的过渡，
+        // 举盾/收盾之间一旦还能互相切（Guard 变了），破防/反击动画就会被抢掉、根本播不出来。
+        if (!stunned && !parryHold) anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
 
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
         if (input.TakeAttackRequest())
         {
-            if (!stunned && CanStartAttack(hasMove))
+            if (parryHold)
+            {
+                // 弹反定身期间：这一下是反击（播 Shield_Dash 并把敌人撞飞），不是普通挥砍
+                if (parry != null && !parry.Riposted) parry.Riposte();
+                else anim.ResetTrigger(AttackId);
+            }
+            else if (!stunned && CanStartAttack(hasMove))
             {
                 anim.SetTrigger(AttackId);
             }
