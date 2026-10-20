@@ -83,7 +83,13 @@ public class PlayerParry : MonoBehaviour
         riposted = true;
         holdTimer = riposteTime;        // 反击动画期间继续锁住移动
 
-        if (animator != null) animator.SetTrigger(ParryId);
+        if (animator != null)
+        {
+            // 强制切过去：此时 Guard 仍是 true，走 trigger 的话 Idle→Shield_Raise 会抢在
+            // AnyState→Shield_Dash 前面（具体状态过渡优先级更高），反击动画就播不出来
+            animator.ResetTrigger(ParryId);
+            animator.CrossFade("Shield_Dash", 0.08f, 0, 0f);
+        }
         if (target != null) target.Launch(transform.forward);   // 沿玩家面朝方向撞飞
     }
 

@@ -280,9 +280,10 @@ public class PlayerController : MonoBehaviour
         anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold);
 
         // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起）----
-        // 破防硬直/弹反定身期间冻结 Guard 参数：AnyState 过渡的优先级低于具体状态之间的过渡，
-        // 举盾/收盾之间一旦还能互相切（Guard 变了），破防/反击动画就会被抢掉、根本播不出来。
-        if (!stunned && !parryHold) anim.SetBool(GuardId, input.GuardHeld && !IsAttackChain());
+        // 破防硬直期间冻结 Guard：AnyState 过渡的优先级低于具体状态之间的过渡，
+        // 举盾/收盾之间一旦还能互相切（Guard 变了），破防动画就会被抢掉、根本播不出来。
+        // 弹反定身则反过来：必须保持 Guard=true，主角才一直举着盾（反击动画由 PlayerParry 强制切，不吃过渡竞争）。
+        if (!stunned) anim.SetBool(GuardId, parryHold || (input.GuardHeld && !IsAttackChain()));
 
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
         if (input.TakeAttackRequest())

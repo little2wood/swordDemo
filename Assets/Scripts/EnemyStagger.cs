@@ -57,6 +57,10 @@ public class EnemyStagger : MonoBehaviour
     {
         if (animator == null) animator = GetComponent<Animator>();
         if (body == null) body = GetComponent<Rigidbody>();
+
+        // 必须在这里记下原始重力状态：Recover 在"弹反后玩家没反击"这条路上也会被调用，
+        // 而那时 Launch 还没跑过。若留默认 false，一恢复就把敌人重力关掉 —— 表现为敌人飘在空中不落地。
+        if (body != null) savedGravity = body.useGravity;
     }
 
     /// <summary>被玩家弹反：进入慢动作硬直，开始用现实时间等玩家反击。</summary>
