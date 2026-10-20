@@ -13,12 +13,28 @@ public class PlayerParry : MonoBehaviour
     public Animator animator;
 
     [Header("弹反")]
-    [Tooltip("只对这么多米以内、正在攻击的敌人弹反")]
+    [Tooltip("粗筛：超过这个距离直接不考虑（米）")]
     public float parryRange = 3.5f;
+    [Tooltip("真正的判定距离 = 敌人的攻击范围（EnemyAI.attackRange）+ 这点边界余量。\n站在这个范围外它的爪子根本够不到你，不允许弹反")]
+    public float rangeTolerance = 0.15f;
     [Tooltip("弹反成功后玩家被定住的现实时间（秒）：期间不能移动，只能按左键反击")]
     public float holdTime = 3f;
     [Tooltip("反击动画时长（Shield_Dash ≈ 1.1s）：期间同样锁住移动")]
     public float riposteTime = 1.1f;
+
+    [Header("反击前冲（撞上去的视觉）")]
+    [Tooltip("前冲距离上限（米）：只是防止极端距离下一帧滑过去，正常由\"吸到贴身\"决定")]
+    public float dashDistance = 3.5f;
+    [Tooltip("前冲速度（m/s）：冲多远由贴身距离算，耗时 = 距离 / 速度")]
+    public float dashSpeed = 6f;
+    [Tooltip("前冲最长持续（秒）：兜底，防止远距离时冲太久")]
+    public float maxDashTime = 0.6f;
+    [Tooltip("贴身判定：吸到\"双方碰撞体半径之和 − 这个重叠量\"就停（米）。\n0=两个人的身体表面刚好相贴；调大=再往里挤一点（物理会把双方推开一点，撞击更实）")]
+    public float contactOverlap = 0.08f;
+    [Tooltip("反击瞬间把角色转向敌人（撞击方向才对得上）")]
+    public bool faceTargetOnRiposte = true;
+    [Tooltip("反击瞬间相机拉近多少米：相机平时是硬跟随，只靠角色前移在画面上看不出冲劲，靠这一下把撞击演出来")]
+    public float punchZoom = 1.2f;
 
     static readonly int ParryId = Animator.StringToHash("Parry");
 
@@ -26,15 +42,30 @@ public class PlayerParry : MonoBehaviour
     bool riposted;
     float holdTimer;
     EnemyStagger target;
+    Rigidbody body;
+    ThirdPersonCamera cam;
+
+    // 前冲状态：由 Riposte 起算，速度直接写进刚体（PlayerController 在这段时间内不接管水平速度）
+    bool dashing;
+    float dashTimer;
+    float dashDuration;
+    Vector3 dashDir;
+    float dashVelocity;
+    bool pendingLaunch;     // 前冲撞上去之后才把敌人打飞（先接触、后击飞）
 
     /// <summary>是否处于弹反定身（不能移动，按左键触发反击）。</summary>
     public bool IsHolding { get { return holding; } }
     /// <summary>本次反击是否已打出（定身期间只放一次）。</summary>
     public bool Riposted { get { return riposted; } }
+    /// <summary>反击前冲进行中：这段时间内水平速度归 PlayerParry 管。</summary>
+    public bool IsDashing { get { return dashing; } }
 
     void Awake()
     {
         if (animator == null) animator = GetComponentInParent<Animator>();
+        if (body == null) body = GetComponent<Rigidbody>();
+        if (body == null) body = GetComponentInParent<Rigidbody>();
+        if (cam == null && Camera.main != null) cam = Camera.main.GetComponent<ThirdPersonCamera>();
     }
 
     /// <summary>
@@ -57,8 +88,14 @@ public class PlayerParry : MonoBehaviour
             var st = ai.GetComponent<EnemyStagger>();
             if (st == null || st.IsLocked) continue;
 
-            float d = Vector3.Distance(transform.position, ai.transform.position);
+            // 水平距离：与 EnemyAI 的追击/攻击判定保持同一套口径
+            Vector3 flat = ai.transform.position - transform.position;
+            flat.y = 0f;
+            float d = flat.magnitude;
             if (d > parryRange || d >= bestD) continue;
+
+            // 必须在它这一击够得到的范围内：站得太远它打不到你，也就不该弹反
+            if (d > ai.AttackRange + rangeTolerance) continue;
 
             bestD = d;
             best = st;
@@ -83,6 +120,23 @@ public class PlayerParry : MonoBehaviour
         riposted = true;
         holdTimer = riposteTime;        // 反击动画期间继续锁住移动
 
+        // 撞击前先把身体转向敌人：这一下是"撞过去"，朝向和前冲方向得一致
+        if (faceTargetOnRiposte && target != null && body != null)
+        {
+            Vector3 to = target.transform.position - transform.position;
+            to.y = 0f;
+            if (to.sqrMagnitude > 1e-6f)
+                body.MoveRotation(Quaternion.Euler(0f, Mathf.Atan2(to.x, to.z) * Mathf.Rad2Deg, 0f));
+        }
+
+        pendingLaunch = true;
+        StartDash();
+        if (!dashing) LaunchTarget();   // 已经贴身就不用冲，直接打飞
+
+        // 撞上去那一下的画面冲击（相机 Awake 阶段可能还没就绪，这里用到时再取一次）
+        if (cam == null && Camera.main != null) cam = Camera.main.GetComponent<ThirdPersonCamera>();
+        if (cam != null) cam.PunchZoom(punchZoom);
+
         if (animator != null)
         {
             // 强制切过去：此时 Guard 仍是 true，走 trigger 的话 Idle→Shield_Raise 会抢在
@@ -90,7 +144,80 @@ public class PlayerParry : MonoBehaviour
             animator.ResetTrigger(ParryId);
             animator.CrossFade("Shield_Dash", 0.08f, 0, 0f);
         }
-        if (target != null) target.Launch(transform.forward);   // 沿玩家面朝方向撞飞
+    }
+
+    /// <summary>
+    /// 起算前冲：不是冲固定距离，而是"吸到贴身" —— 目标间距按双方碰撞体半径之和算，
+    /// 冲完刚好身体表面相贴（盾牌够得到敌人），已经贴身则一点都不冲。
+    /// dashDistance 只是上限，防止从很远的地方一帧滑过去。
+    /// </summary>
+    void StartDash()
+    {
+        if (target == null) { dashing = false; return; }
+
+        Vector3 to = target.transform.position - transform.position;
+        to.y = 0f;
+        float d = to.magnitude;
+        if (d > 1e-4f) dashDir = to / d;
+        else dashDir = transform.forward;
+
+        dashDir.y = 0f;
+        if (dashDir.sqrMagnitude > 1e-6f) dashDir.Normalize();
+
+        float gap = RadiusOf(GetComponent<Collider>()) + RadiusOf(target.GetComponent<Collider>()) - contactOverlap;
+        float want = d - gap;
+        if (want <= 0.03f) { dashing = false; return; }     // 已经贴身，没必要再动
+
+        float dist = Mathf.Min(want, dashDistance);
+        dashDuration = Mathf.Min(dist / Mathf.Max(0.1f, dashSpeed), maxDashTime);
+        dashVelocity = dist / dashDuration;
+        dashTimer = 0f;
+        dashing = true;
+    }
+
+    /// 碰撞体的水平半径（胶囊/球/盒），没有碰撞体时按成年人身材兜底
+    static float RadiusOf(Collider c)
+    {
+        if (c == null) return 0.4f;
+        float s = Mathf.Abs(c.transform.lossyScale.x);
+        if (s < 0.0001f) s = 0.0001f;
+
+        var cap = c as CapsuleCollider;
+        if (cap != null) return cap.radius * s;
+        var sph = c as SphereCollider;
+        if (sph != null) return sph.radius * s;
+        var box = c as BoxCollider;
+        if (box != null) return Mathf.Min(box.size.x, box.size.z) * 0.5f * s;
+        return 0.4f;
+    }
+
+    void FixedUpdate()
+    {
+        if (!dashing || body == null) return;
+
+        dashTimer += Time.fixedDeltaTime;
+        if (dashTimer >= dashDuration)
+        {
+            dashing = false;        // 冲完停住（后续由 PlayerController 的定身锁定接管）
+            var v0 = body.linearVelocity;
+            v0.x = 0f;
+            v0.z = 0f;
+            body.linearVelocity = v0;
+            if (pendingLaunch) LaunchTarget();   // 撞到了才打飞
+            return;
+        }
+
+        var v = body.linearVelocity;    // 只接管水平速度，竖直交给重力
+        v.x = dashDir.x * dashVelocity;
+        v.z = dashDir.z * dashVelocity;
+        body.linearVelocity = v;
+    }
+
+    /// 把敌人打飞（前冲撞上去之后才调用）
+    void LaunchTarget()
+    {
+        pendingLaunch = false;
+        if (target != null) target.Launch(transform.forward);   // 沿玩家面朝方向
     }
 
     void Update()

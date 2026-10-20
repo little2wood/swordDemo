@@ -683,6 +683,7 @@ MonoBehaviour:
   shoulderSpeed: 6
   throwHoldTime: 3
   hitHoldTime: 1
+  punchRecoverSpeed: 2.2
 --- !u!1 &336358146 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: -8819792451641598848, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
@@ -986,7 +987,8 @@ MonoBehaviour:
   clawMass: 2.5
   maxClawSpeed: 8
   facingOffset: 0
-  parryWindowStart: 0.25
+  parryWindowStart: 0.27
+  parryWindowEnd: 0.4
 --- !u!136 &469687790
 CapsuleCollider:
   m_ObjectHideFlags: 0
@@ -4936,8 +4938,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerParry
   animator: {fileID: 1076808053}
   parryRange: 3.5
+  rangeTolerance: 0.15
   holdTime: 3
   riposteTime: 1.1
+  dashDistance: 3.5
+  dashSpeed: 6
+  maxDashTime: 0.6
+  contactOverlap: 0.08
+  faceTargetOnRiposte: 1
+  punchZoom: 1.2
 --- !u!4 &1079367453 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7378292883642932892, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}

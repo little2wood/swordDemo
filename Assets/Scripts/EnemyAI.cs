@@ -38,8 +38,10 @@ public class EnemyAI : MonoBehaviour
     public float facingOffset = 0f;     // 模型正面与 transform.forward 的夹角；若角色倒着走改成 180
 
     [Header("弹反")]
-    [Tooltip("攻击动画播到这个进度之后才算\"攻击期间\"（前摇结束），玩家此时进防御即可弹反")]
-    [Range(0f, 1f)] public float parryWindowStart = 0.25f;
+    [Tooltip("可弹反窗口的起点（动画进度）：前摇（抬手）结束、爪子开始挥出的那一瞬。\nZombie_Scratch 实测：手掌速度峰值在 0.30~0.34，0.26 之前是抬手")]
+    [Range(0f, 1f)] public float parryWindowStart = 0.27f;
+    [Tooltip("可弹反窗口的终点（动画进度）：挥击段结束、进入收势（后摇）之前。实测 0.38 之后手掌基本停住")]
+    [Range(0f, 1f)] public float parryWindowEnd = 0.40f;
 
     Rigidbody rb;
     Animator anim;
@@ -70,7 +72,8 @@ public class EnemyAI : MonoBehaviour
     }
 
     /// <summary>
-    /// 是否处于可弹反的"攻击期间"：正在播攻击动画，且已过前摇（进度 ≥ parryWindowStart）。
+    /// 是否处于可弹反的"攻击期间"：正在播攻击动画，且落在 [parryWindowStart, parryWindowEnd] 这段
+    /// 真正的挥击区间里 —— 前摇（抬手）和后摇（收势）都不算。
     /// 只有这段时间里玩家按下防御才判定弹反 —— 手掌扫掠之外的伤害源不参与。
     /// </summary>
     public bool IsInParryWindow()
@@ -78,8 +81,12 @@ public class EnemyAI : MonoBehaviour
         if (stagger != null && stagger.IsLocked) return false;
         var st = anim.GetCurrentAnimatorStateInfo(0);
         if (st.shortNameHash != AttackStateH) return false;
-        return st.normalizedTime >= parryWindowStart && st.normalizedTime < 1.5f;
+        float t = st.normalizedTime;
+        return t >= parryWindowStart && t <= parryWindowEnd;
     }
+
+    /// <summary>这一击够得到目标的距离上限（弹反判定用）：超出这个距离，它的爪子打不到你，也就不该弹反。</summary>
+    public float AttackRange { get { return attackRange; } }
 
     void Update()
     {

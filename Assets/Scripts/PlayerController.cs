@@ -251,7 +251,14 @@ public class PlayerController : MonoBehaviour
 
         // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手与出手后的收势才锁定。
         //      瞄准（按住空格）期间照常移动，身体朝向也交给正常移动逻辑 ----
-        if (IsAttackChain() || IsGuarding() || stunned || parryHold || throwPending || throwLockTimer > 0f || !hasMove)
+        // 弹反反击的前冲：这段时间水平速度由 PlayerParry 写，这里既不接管也不清零
+        bool dashing = parry != null && parry.IsDashing;
+
+        if (dashing)
+        {
+            // 交给 PlayerParry
+        }
+        else if (IsAttackChain() || IsGuarding() || stunned || parryHold || throwPending || throwLockTimer > 0f || !hasMove)
         {
             ZeroHorizontalVelocity();
         }

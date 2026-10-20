@@ -44,8 +44,14 @@ public class ThirdPersonCamera : MonoBehaviour
     public float throwHoldTime = 3f;
     [Tooltip("盾第一次碰撞后再保持瞄准位这么久（秒），方便看清落点，然后才回位")]
     public float hitHoldTime = 1f;
+
+    [Header("冲击拉近（弹反反击等瞬间用）")]
+    [Tooltip("PunchZoom 拉近后推回原位的速度（m/s）：越小 = 冲击感持续越久")]
+    public float punchRecoverSpeed = 2.2f;
+
     bool throwHold;                 // 观察期中：维持瞄准位（拉近 + 越肩）
     float throwHoldTimer;
+    float punch;                    // 当前冲击拉近量（米），每帧衰减回 0
 
     PlayerInput input;
     float yaw;
@@ -104,6 +110,16 @@ public class ThirdPersonCamera : MonoBehaviour
         get { return restDistance; }
     }
 
+    /// <summary>
+    /// 瞬间拉近一下再平滑推回（冲击感）：用于弹反反击这类"撞上去"的瞬间。
+    /// 相机平时是硬跟随，角色前冲在画面里看不出来，靠这一下把冲击演出来。
+    /// </summary>
+    public void PunchZoom(float amount)
+    {
+        if (throwHold) return;      // 投掷观察期不打扰
+        if (amount > punch) punch = amount;
+    }
+
     void LateUpdate()
     {
         if (target == null) return;
@@ -114,6 +130,9 @@ public class ThirdPersonCamera : MonoBehaviour
             throwHoldTimer -= Time.deltaTime;
             if (throwHoldTimer <= 0f) EndThrowHold();
         }
+
+        // ---- 冲击拉近衰减 ----
+        punch = Mathf.MoveTowards(punch, 0f, punchRecoverSpeed * Time.deltaTime);
 
         // ---- 鼠标 → 球面角度 ----
         if (input != null)
@@ -148,7 +167,8 @@ public class ThirdPersonCamera : MonoBehaviour
         }
 
         // 理想球面半径平缓过渡到"常态 / 瞄准"两档，再交给避障逻辑
-        float want = aiming ? distance * aimDistanceScale : distance;
+        float want = (aiming ? distance * aimDistanceScale : distance) - punch;
+        if (want < minDistance) want = minDistance;      // 别拉得比避障下限还近
         restDistance = Mathf.MoveTowards(restDistance, want, zoomSpeed * Time.deltaTime);
 
         // 无遮挡时的理想距离：注视点 → 球面位置
