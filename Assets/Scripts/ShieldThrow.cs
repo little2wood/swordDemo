@@ -178,7 +178,62 @@ public class ShieldThrow : MonoBehaviour
         Vector3 right = Vector3.Cross(Vector3.up, aim);
         if (right.sqrMagnitude < 1e-6f) right = Vector3.right;      // 垂直上下瞄准时的兜底
         right.Normalize();
-        return transform.position + aim * throwForward + right * aimSideOffset;
+        return PushOutOfSolids(transform.position + aim * throwForward + right * aimSideOffset, aim);
+    }
+
+    /// <summary>
+    /// 敌人/箱子贴脸时，出手点会陷进它的碰撞体内部 —— 而 Physics.Raycast 从碰撞体内部出发不会命中它，
+    /// 射线会直接穿过去，预瞄点就跑到敌人身后去了（实弹同理会穿过去）。
+    /// 这里把起点沿"射手这一侧"退到目标表面之外一点点：既让预瞄立刻命中，也让实弹确实会在那里撞上。
+    /// </summary>
+    Vector3 PushOutOfSolids(Vector3 p, Vector3 aim)
+    {
+        for (int iter = 0; iter < 3; iter++)
+        {
+            var overlaps = Physics.OverlapSphere(p, 0.02f);
+            bool buried = false;
+            for (int i = 0; i < overlaps.Length; i++)
+            {
+                var c = overlaps[i];
+                if (c == null || c.isTrigger) continue;
+                if (IsSelfCollider(c)) continue;
+                if (Vector3.Distance(c.ClosestPoint(p), p) < 0.001f) { buried = true; break; }   // 点就在它体内
+            }
+            if (!buried) break;
+
+            RaycastHit h;
+            if (!CastIgnoreSelf(p - aim * 2f, aim, 3f, out h)) break;   // 从身后往前打，命中面就是朝我这侧的表面
+            p = h.point - aim * 0.015f;                                 // 退到表面外一点点
+        }
+        return p;
+    }
+
+    /// 射线：命中的是主角自身就跳过继续往前找
+    bool CastIgnoreSelf(Vector3 origin, Vector3 dir, float maxDist, out RaycastHit result)
+    {
+        result = default(RaycastHit);
+        float remain = maxDist;
+        Vector3 p = origin;
+        while (remain > 0.01f)
+        {
+            RaycastHit h;
+            if (Physics.Raycast(p, dir, out h, remain))
+            {
+                if (!IsSelfCollider(h.collider)) { result = h; return true; }
+                float skip = Mathf.Max(h.distance, 0f) + 0.05f;
+                p += dir * skip;
+                remain -= skip;
+                continue;
+            }
+            break;
+        }
+        return false;
+    }
+
+    bool IsSelfCollider(Collider c)
+    {
+        if (c == null || owner == null) return false;
+        return c.transform == owner || c.transform.IsChildOf(owner);
     }
 
     /// <summary>沿 dir 甩出（由 PlayerController 消费空格输入后调用）。</summary>
