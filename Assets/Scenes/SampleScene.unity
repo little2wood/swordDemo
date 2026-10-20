@@ -1168,11 +1168,9 @@ MonoBehaviour:
   slowScale: 0.1
   parryHoldTime: 3
   launchDistance: 3
-  launchArcHeight: 0.8
-  groundProbe: 0.12
-  groundLayer:
-    serializedVersion: 2
-    m_Bits: 4294967295
+  launchTime: 0.8
+  knockClipLength: 0.833
+  knockSpeedRange: {x: 0.25, y: 3}
   launchTimeout: 2.5
   landingTimeout: 3
 --- !u!1 &471596838 stripped
@@ -3286,7 +3284,7 @@ Transform:
   m_GameObject: {fileID: 1045189333}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.04, z: 0.18}
+  m_LocalPosition: {x: 0, y: 0.131, z: 0.221}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3361,8 +3359,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0dfe7f3506610f84b917463bd915cb51, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CapeCloth
-  cols: 5
-  rows: 7
+  cols: 7
+  rows: 10
   width: 0.4
   length: 0.7
   anchorHeight: 0.25
@@ -3374,6 +3372,12 @@ MonoBehaviour:
   windStrength: 1.5
   windFrequency: 1.6
   moveWindScale: 0.9
+  maxAnchorWind: 12
+  bodyCollision: 1
+  torsoRadius: 0.16
+  hipRadius: 0.14
+  headRadius: 0.11
+  thighRadius: 0.08
   clothColor: {r: 0.45, g: 0.12, b: 0.1, a: 1}
   smoothness: 0.35
 --- !u!4 &1057977569 stripped
@@ -4947,6 +4951,7 @@ MonoBehaviour:
   contactOverlap: 0.08
   faceTargetOnRiposte: 1
   punchZoom: 1.2
+  riposteDamage: 34
 --- !u!4 &1079367453 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 7378292883642932892, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}

@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 玩家侧弹反：敌人处于"攻击期间"（Attack 动画前摇之后）时按下右键进入防御 → 弹反成功。
 /// 弹反后玩家被定住 parryHoldTime 秒（现实时间，只有敌人的时间被放慢，玩家时间照常流逝），
-/// 期间不能移动，按左键即触发反击：播 Shield_Dash，同时把敌人沿玩家面朝方向撞飞。
+/// 期间不能移动，按左键即触发反击：播 Shield_Dash，同时把敌人沿玩家面朝方向撞飞并扣血。
 /// 定住期间不点左键 → 时间到自动结束，敌人恢复正常，无事发生。
 /// 只对敌人的手掌攻击生效（判定看 EnemyAI.IsInParryWindow），其它伤害源不参与。
 /// </summary>
@@ -35,6 +35,10 @@ public class PlayerParry : MonoBehaviour
     public bool faceTargetOnRiposte = true;
     [Tooltip("反击瞬间相机拉近多少米：相机平时是硬跟随，只靠角色前移在画面上看不出冲劲，靠这一下把撞击演出来")]
     public float punchZoom = 1.2f;
+
+    [Header("反击伤害")]
+    [Tooltip("反击命中时对敌人造成的伤害：默认与普攻一刀相同（34）。60 血的小怪弹两下收走。\n打死了就不走撞飞硬直，改为布娃娃按致死冲量飞出去")]
+    public float riposteDamage = 34f;
 
     static readonly int ParryId = Animator.StringToHash("Parry");
 
@@ -213,11 +217,22 @@ public class PlayerParry : MonoBehaviour
         body.linearVelocity = v;
     }
 
-    /// 把敌人打飞（前冲撞上去之后才调用）
+    /// 把敌人打飞（前冲撞上去之后才调用）：命中瞬间结算反击伤害
     void LaunchTarget()
     {
         pendingLaunch = false;
-        if (target != null) target.Launch(transform.forward);   // 沿玩家面朝方向
+        if (target == null) return;
+
+        // 反击这一下是真伤害（与普攻同档，Inspector 可调）。
+        // 打死了就不再走撞飞硬直 —— 布娃娃按致死冲量（0 = 满档）沿击飞方向飞出去
+        var hp = target.GetComponent<Health>();
+        if (hp != null && hp.team == Health.Team.Enemy && !hp.IsDead)
+        {
+            hp.TakeDamage(riposteDamage, transform.forward, 0f, Vector3.zero);
+            if (hp.IsDead) return;
+        }
+
+        target.Launch(transform.forward);   // 沿玩家面朝方向
     }
 
     void Update()
