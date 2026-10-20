@@ -39,6 +39,14 @@ public class ThirdPersonCamera : MonoBehaviour
     public float aimShoulderOffset = 0.6f;
     public float shoulderSpeed = 6f;                           // 越肩平移的速度（m/s）
 
+    [Header("投掷观察期")]
+    [Tooltip("投掷后保持瞄准位观察盾的飞行轨迹，最长这么久（秒）；期间无碰撞到点自动切回")]
+    public float throwHoldTime = 3f;
+    [Tooltip("盾第一次碰撞后再保持瞄准位这么久（秒），方便看清落点，然后才回位")]
+    public float hitHoldTime = 1f;
+    bool throwHold;                 // 观察期中：维持瞄准位（拉近 + 越肩）
+    float throwHoldTimer;
+
     PlayerInput input;
     float yaw;
     float restDistance;             // 当前理想球面半径（会被瞄准拉近修改）
@@ -64,7 +72,30 @@ public class ThirdPersonCamera : MonoBehaviour
     /// <summary>切到/退出瞄准视角（球面半径在 distance 与 distance*aimDistanceScale 之间过渡）。</summary>
     public void SetAiming(bool on)
     {
+        if (!on && throwHold) return;   // 观察期内不许外部关瞄准（保持拉近看盾飞行）
         aiming = on;
+    }
+
+    /// <summary>投掷出手：保持瞄准位（拉近 + 越肩）观察盾的飞行轨迹。</summary>
+    public void BeginThrowHold()
+    {
+        throwHold = true;
+        throwHoldTimer = throwHoldTime;
+        aiming = true;
+    }
+
+    /// <summary>结束观察期（缓冲到期 / 超时 / 投掷取消），开始平滑回到常规轨道。</summary>
+    public void EndThrowHold()
+    {
+        throwHold = false;
+        aiming = false;
+    }
+
+    /// <summary>盾飞行中第一次碰撞：不立即回位，再保持瞄准位 hitHoldTime 秒（看清落点），到点自动切回。</summary>
+    public void OnThrowFlightHit()
+    {
+        if (!throwHold) return;     // 观察期已结束（如超时回位后盾才撞上）：不再拉回瞄准位
+        throwHoldTimer = hitHoldTime;   // 复用观察期计时：到点由 LateUpdate 自动 EndThrowHold
     }
 
     /// <summary>当前理想球面半径（瞄准时更近）。</summary>
@@ -76,6 +107,13 @@ public class ThirdPersonCamera : MonoBehaviour
     void LateUpdate()
     {
         if (target == null) return;
+
+        // ---- 投掷观察期计时：到点自动切回常规位 ----
+        if (throwHold)
+        {
+            throwHoldTimer -= Time.deltaTime;
+            if (throwHoldTimer <= 0f) EndThrowHold();
+        }
 
         // ---- 鼠标 → 球面角度 ----
         if (input != null)

@@ -107,6 +107,20 @@ public class PlayerController : MonoBehaviour
         // 盾：留空则自动取子树里的 ShieldThrow（脚本挂在盾牌对象上）
         if (shield == null) shield = GetComponentInChildren<ShieldThrow>(true);
         if (thirdPersonCamera == null) thirdPersonCamera = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
+
+        // 盾飞行中第一次撞到东西 → 相机提前结束投掷观察期
+        if (shield != null) shield.FlightFirstHit += OnShieldFirstHit;
+    }
+
+    void OnDestroy()
+    {
+        if (shield != null) shield.FlightFirstHit -= OnShieldFirstHit;
+    }
+
+    /// 盾飞行途中第一次撞到东西 → 相机再保持观察期一小段（看清落点）后回位
+    void OnShieldFirstHit()
+    {
+        if (thirdPersonCamera != null) thirdPersonCamera.OnThrowFlightHit();
     }
 
     void Update()
@@ -151,6 +165,7 @@ public class PlayerController : MonoBehaviour
             else if (throwPendingTime > throwPendingTimeout)
             {
                 throwPending = false;               // 没能进入投掷状态（被打断/状态机没接上）：丢弃这次请求
+                if (thirdPersonCamera != null) thirdPersonCamera.EndThrowHold();   // 没扔出去：结束观察期，相机回位
             }
         }
     }
@@ -176,8 +191,10 @@ public class PlayerController : MonoBehaviour
     void EndAim()
     {
         aimMode = false;
-        if (thirdPersonCamera != null) thirdPersonCamera.SetAiming(false);
         if (shield != null && shield.reticle != null) shield.reticle.SetAiming(false);
+        // 相机不立即回位：进入投掷观察期，保持瞄准位（拉近 + 越肩）直到盾第一次碰撞
+        // 或最长 3 秒，方便玩家看清盾的飞行轨迹
+        if (thirdPersonCamera != null) thirdPersonCamera.BeginThrowHold();
     }
 
     /// 松开空格 → 起手投掷动画：这一刻才把身体转向投掷方向（盾在动画走到出手点时才真的飞出去）

@@ -54,6 +54,10 @@ public class ShieldThrow : MonoBehaviour
     Vector3 socketLocalScale;
 
     float restTimer;
+    bool firstHitFired;     // 本次飞行是否已报告过第一次碰撞
+
+    /// 飞行途中第一次撞到外部物体时触发（供相机提前结束"投掷观察期"等外部逻辑使用）
+    public event System.Action FlightFirstHit;
 
     void Awake()
     {
@@ -147,6 +151,16 @@ public class ShieldThrow : MonoBehaviour
             if (restTimer >= restTime) Freeze();
         }
         else restTimer = 0f;
+    }
+
+    // ---------- 首次碰撞 ----------
+
+    void OnCollisionEnter(Collision collision)
+    {
+        if (Current != State.Flying || firstHitFired) return;
+        if (IsSelfCollider(collision.collider)) return;   // 保险：IgnoreCollision 已挡住自己人，这里再筛一次
+        firstHitFired = true;
+        var handler = FlightFirstHit; if (handler != null) handler();
     }
 
     // ---------- 出手 ----------
@@ -273,6 +287,7 @@ public class ShieldThrow : MonoBehaviour
 
         Current = State.Flying;
         restTimer = 0f;
+        firstHitFired = false;
 
         rb.linearVelocity = dir * throwSpeed;
 
