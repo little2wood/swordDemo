@@ -146,7 +146,14 @@ public class PlayerController : MonoBehaviour
         bool guardPressed = input.TakeGuardRequest();
         if (guardPressed && !stunnedUp && !parryHoldUp)
         {
-            if (shield != null && !shield.InHand) shield.StartReturn();
+            if (shield != null && !shield.InHand)
+            {
+                shield.StartReturn();
+                // 召回开始立刻举起左手：不在举盾状态（比如跑动中召回）就切入 Raise，
+                // 并同帧置 Guard=true，避免下一次 FixedUpdate 前出现 Guard=false 间隙引发 Raise→Lower 抖动
+                anim.SetBool(GuardId, true);
+                if (!IsGuarding()) anim.CrossFade(RaiseH, 0.15f);
+            }
             else if (parry != null) parry.TryParry();
         }
 
@@ -249,16 +256,18 @@ public class PlayerController : MonoBehaviour
             dir = (fwd * mv.y + right * mv.x).normalized;
         }
 
-        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、防御(Raise/Lower)、投掷起手与出手后的收势才锁定。
+        // ---- 位移：攻击链全程(A/A_Rec/B/B_Rec/C)、投掷起手与出手后的收势才锁定。
+        //      举盾(Raise/Lower)与召回期间可以移动：动画停在举盾姿势、位移与转向照常（举盾滑步）；
         //      瞄准（按住空格）期间照常移动，身体朝向也交给正常移动逻辑 ----
         // 弹反反击的前冲：这段时间水平速度由 PlayerParry 写，这里既不接管也不清零
         bool dashing = parry != null && parry.IsDashing;
+        bool shieldReturning = shield != null && shield.IsReturning;   // 召回飞行中：左手强制保持举盾
 
         if (dashing)
         {
             // 交给 PlayerParry
         }
-        else if (IsAttackChain() || IsGuarding() || stunned || parryHold || throwPending || throwLockTimer > 0f || !hasMove)
+        else if (IsAttackChain() || stunned || parryHold || throwPending || throwLockTimer > 0f || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -270,13 +279,13 @@ public class PlayerController : MonoBehaviour
             rb.linearVelocity = v;
         }
 
-        // ---- 朝向：只在投掷起手阶段转去投掷方向；其余时候平滑转向移动方向（攻击链与防御全程锁定不转） ----
-        if (throwAiming && !IsAttackChain() && !IsGuarding() && !stunned && !parryHold)
+        // ---- 朝向：只在投掷起手阶段转去投掷方向；其余时候平滑转向移动方向（攻击链全程锁定不转，举盾移动照常转向） ----
+        if (throwAiming && !IsAttackChain() && !stunned && !parryHold)
         {
             Quaternion aimTarget = Quaternion.Euler(0f, throwAimYaw, 0f);
             rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, aimTarget, throwTurnSpeed * Time.fixedDeltaTime));
         }
-        else if (hasMove && !IsAttackChain() && !IsGuarding() && !stunned && !parryHold)
+        else if (hasMove && !IsAttackChain() && !stunned && !parryHold)
         {
             float targetYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + facingOffset;
             Quaternion target = Quaternion.Euler(0f, targetYaw, 0f);
@@ -284,13 +293,16 @@ public class PlayerController : MonoBehaviour
         }
 
         // ---- 动画参数：投掷起手/收势期间不报"在移动"，否则会原地踩跑步动画 ----
-        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold);
+        //      举盾/召回期间也不报"在移动"：动画停在举盾姿势（位移由物理承担），
+        //      Jog 没有到举盾的过渡，切过去等于把盾放下
+        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold && !input.GuardHeld && !shieldReturning);
 
-        // ---- 防御：按住右键举盾；攻击链期间不响应（链结束仍按着会自动举起）----
+        // ---- 防御：按住右键举盾；召回飞行中强制举盾（左手保持举盾姿势直到盾回到手上）----
+        //      举盾输入在攻击链期间不响应（链结束仍按着会自动举起），召回强制项不受此限。
         // 破防硬直期间冻结 Guard：AnyState 过渡的优先级低于具体状态之间的过渡，
         // 举盾/收盾之间一旦还能互相切（Guard 变了），破防动画就会被抢掉、根本播不出来。
         // 弹反定身则反过来：必须保持 Guard=true，主角才一直举着盾（反击动画由 PlayerParry 强制切，不吃过渡竞争）。
-        if (!stunned) anim.SetBool(GuardId, parryHold || (input.GuardHeld && !IsAttackChain()));
+        if (!stunned) anim.SetBool(GuardId, parryHold || shieldReturning || (input.GuardHeld && !IsAttackChain()));
 
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
         if (input.TakeAttackRequest())

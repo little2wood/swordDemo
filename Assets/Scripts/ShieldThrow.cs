@@ -74,6 +74,8 @@ public class ShieldThrow : MonoBehaviour
     public State Current { get; private set; } = State.InHand;
     /// <summary>盾是否还在手上。</summary>
     public bool InHand { get { return Current == State.InHand; } }
+    /// <summary>盾是否正在召回飞行中（StartReturn → FinishReturn 之间）。</summary>
+    public bool IsReturning { get { return Current == State.Returning; } }
 
     Rigidbody rb;
     Collider col;
