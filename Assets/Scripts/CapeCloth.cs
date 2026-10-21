@@ -64,6 +64,8 @@ public class CapeCloth : MonoBehaviour
     public float thighRadius = 0.08f;   // thigh_l / thigh_r（大腿：跑动时防披风穿腿）
 
     [Header("外观（renderer 无材质时自动按此建运行时材质）")]
+    [Tooltip("是否生成并渲染自带的程序化梯形网格。\n作为隐形物理骨架（撕裂披风等蒙皮代理的粒子宿主）时应关闭：\n关闭后只跑粒子模拟，不建网格、不接管 MeshFilter/MeshRenderer，避免覆盖同物体上的美术网格")]
+    public bool renderGridMesh = true;
     public Color clothColor = new Color(0.45f, 0.12f, 0.10f);
     public float smoothness = 0.35f;
 
@@ -276,6 +278,7 @@ public class CapeCloth : MonoBehaviour
     /// 动态网格：顶点 = 粒子位置（双面顶点：每粒子正/反两个顶点，反面绕序反转）
     void BuildMesh()
     {
+        if (!renderGridMesh) return;    // 隐形骨架模式：只跑物理，不建网格、不碰 MeshFilter/MeshRenderer
         halfCount = cols * rows;
         vertCount = halfCount * 2;
         meshVerts = new Vector3[vertCount];
@@ -329,10 +332,11 @@ public class CapeCloth : MonoBehaviour
     void LateUpdate()
     {
         // 自愈：Play 中途重编译（域重载）会把非序列化字段清空且不重跑 Awake，这里懒重建
-        if (mesh == null || pos == null || cons == null)
+        //（隐形骨架模式不建 mesh，自愈只查物理数组；普通模式才查 mesh）
+        if (pos == null || cons == null || (renderGridMesh && mesh == null))
         {
             BuildNow();
-            if (mesh == null || pos == null || cons == null) return;
+            if (pos == null || cons == null || (renderGridMesh && mesh == null)) return;
         }
 
         float dt = Mathf.Min(Time.deltaTime, 1f / 30f);
@@ -409,6 +413,7 @@ public class CapeCloth : MonoBehaviour
     /// 粒子位置写回网格顶点（双面两份同步），法线按当前形态重算；顶点缓冲复用，零 GC
     void SyncMesh()
     {
+        if (mesh == null) return;       // 隐形骨架模式：无网格可写
         var w2l = transform.worldToLocalMatrix;
         for (int i = 0; i < halfCount; i++)
         {
