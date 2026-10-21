@@ -40,6 +40,10 @@ public class PlayerController : MonoBehaviour
     [Tooltip("出手后还要锁多久的移动：等投掷动画播完再放行，否则会带着投掷姿势平移（滑步）")]
     public float throwMoveLockTime = 0.45f;
 
+    [Header("举盾（GuardUpper 上半身叠加层）")]
+    [Tooltip("GuardUpper 层权重趋近目标的速度（每秒）：决定举手/收盾的快慢")]
+    public float guardWeightSpeed = 8f;
+
     [Header("击飞可互动物体（Prop 层：箱子等）")]
     public LayerMask propLayer;         // 可互动物体所在层（Inspector 选 Prop）；主角/敌人/平台不在该层，天然不受影响
     public float bladeMass = 2f;        // 剑的有效质量：冲量 = 剑尖速度(m/s) × 该质量(kg)，单位 N·s
@@ -64,6 +68,7 @@ public class PlayerController : MonoBehaviour
     PlayerParry parry;      // 弹反：定身期间锁移动，左键走反击而不是普通挥砍
     bool throwAiming;       // 松开空格后的起手阶段：把身体转向投掷方向（瞄准按住期间不转，交给正常移动）
     float throwAimYaw;      // 目标朝向（Y 轴欧拉角，已含 facingOffset）
+    int guardLayerIdx = -1; // GuardUpper 叠加层索引：上半身举盾姿势（腿在 Base 层照常跑动）
 
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
     Vector3 prevTip;        // 上一渲染帧的剑尖位置（扫掠起点）
@@ -80,8 +85,7 @@ public class PlayerController : MonoBehaviour
     static readonly int ThrowStateH = Animator.StringToHash("Shield_Throw");
     static readonly int IdleH = Animator.StringToHash("Idle");
     static readonly int JogH = Animator.StringToHash("Jog");
-    static readonly int RaiseH = Animator.StringToHash("Shield_Raise");
-    static readonly int LowerH = Animator.StringToHash("Shield_Lower");
+    static readonly int DashH = Animator.StringToHash("Shield_Dash");
     static readonly int AH = Animator.StringToHash("A");
     static readonly int ARecH = Animator.StringToHash("A_Rec");
     static readonly int BH = Animator.StringToHash("B");
@@ -94,6 +98,7 @@ public class PlayerController : MonoBehaviour
         anim = GetComponent<Animator>();
         input = GetComponent<PlayerInput>();
         cam = Camera.main;
+        guardLayerIdx = anim.GetLayerIndex("GuardUpper");
 
         // 自动查找剑的判定点（Inspector 未指定时）
         if (bladeTip == null || bladeBase == null)
@@ -149,10 +154,9 @@ public class PlayerController : MonoBehaviour
             if (shield != null && !shield.InHand)
             {
                 shield.StartReturn();
-                // 召回开始立刻举起左手：不在举盾状态（比如跑动中召回）就切入 Raise，
-                // 并同帧置 Guard=true，避免下一次 FixedUpdate 前出现 Guard=false 间隙引发 Raise→Lower 抖动
+                // 召回开始立刻置 Guard=true：GuardUpper 层权重由 FixedUpdate 平滑推上去，左手即举盾，
+                // 直到 FinishReturn（盾回到手）后 shieldReturning 解除才回落
                 anim.SetBool(GuardId, true);
-                if (!IsGuarding()) anim.CrossFade(RaiseH, 0.15f);
             }
             else if (parry != null) parry.TryParry();
         }
@@ -293,16 +297,26 @@ public class PlayerController : MonoBehaviour
         }
 
         // ---- 动画参数：投掷起手/收势期间不报"在移动"，否则会原地踩跑步动画 ----
-        //      举盾/召回期间也不报"在移动"：动画停在举盾姿势（位移由物理承担），
-        //      Jog 没有到举盾的过渡，切过去等于把盾放下
-        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold && !input.GuardHeld && !shieldReturning);
+        //      举盾照常报 Moving：腿在 Base 层跑动（Idle/Jog），上半身由 GuardUpper 层叠举盾姿势
+        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold);
 
         // ---- 防御：按住右键举盾；召回飞行中强制举盾（左手保持举盾姿势直到盾回到手上）----
         //      举盾输入在攻击链期间不响应（链结束仍按着会自动举起），召回强制项不受此限。
-        // 破防硬直期间冻结 Guard：AnyState 过渡的优先级低于具体状态之间的过渡，
-        // 举盾/收盾之间一旦还能互相切（Guard 变了），破防动画就会被抢掉、根本播不出来。
+        // 破防硬直期间冻结 Guard：破防动画必须完整播出。
         // 弹反定身则反过来：必须保持 Guard=true，主角才一直举着盾（反击动画由 PlayerParry 强制切，不吃过渡竞争）。
-        if (!stunned) anim.SetBool(GuardId, parryHold || shieldReturning || (input.GuardHeld && !IsAttackChain()));
+        bool guardHeld = parryHold || shieldReturning || (input.GuardHeld && !IsAttackChain());
+        if (!stunned) anim.SetBool(GuardId, guardHeld);
+
+        // ---- GuardUpper 层权重：举盾姿势叠加在上半身（腿照常 Idle/Jog）；
+        //      攻击链/投掷/弹反 Dash 等需要占用手臂的全身动作期间权重归零让位，
+        //      其余时候向目标平滑趋近（举手/收盾的过渡效果由权重的淡入淡出完成）----
+        if (guardLayerIdx >= 0)
+        {
+            float guardTarget = (!stunned && guardHeld && !IsFullBodyAction()) ? 1f : 0f;
+            float w = anim.GetLayerWeight(guardLayerIdx);
+            if (!Mathf.Approximately(w, guardTarget))
+                anim.SetLayerWeight(guardLayerIdx, Mathf.MoveTowards(w, guardTarget, Time.fixedDeltaTime * guardWeightSpeed));
+        }
 
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
         if (input.TakeAttackRequest())
@@ -458,11 +472,18 @@ public class PlayerController : MonoBehaviour
         hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(tipVel, bladeMass), point);   // 冲量决定晃动幅度，命中点决定布娃娃飞散姿态
     }
 
-    /// 是否处于防御状态（举盾/收盾）——锁定移动与朝向；过渡期间按来源状态判定，仍然算防御中
+    /// 是否处于举盾姿态：GuardUpper 层权重过半（举手姿势已明显叠加）。
+    /// 供格挡判定（PlayerGuard）使用；权重平滑趋近目标，天然覆盖举手/收盾的过渡段
     bool IsGuarding()
     {
+        return guardLayerIdx >= 0 && anim.GetLayerWeight(guardLayerIdx) > 0.4f;
+    }
+
+    /// 当前是否在播需要占用手臂的全身动作（攻击链/投掷/弹反 Dash）：GuardUpper 层必须让位
+    bool IsFullBodyAction()
+    {
         int h = anim.GetCurrentAnimatorStateInfo(0).shortNameHash;
-        return h == RaiseH || h == LowerH;
+        return IsAttackChain() || throwPending || h == ThrowStateH || h == DashH;
     }
 
     /// <summary>是否处于举盾姿态（供 PlayerGuard 判定能否格挡）。</summary>
