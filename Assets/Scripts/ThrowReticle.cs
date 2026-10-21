@@ -3,7 +3,7 @@ using UnityEngine;
 /// <summary>
 /// 盾牌瞄准指示：用与盾飞行完全相同的积分（同重力档、同阻尼、同步长）逐段做射线，
 /// 取第一个撞到的点，在那儿画一个贴着表面的圆环 —— 看到的就是真会打中的地方。
-/// 只在盾还在手上时显示；标记是运行时生成，不往工程里写任何资产。
+/// 只在按住空格瞄准时显示，平时不画；标记是运行时生成，不往工程里写任何资产。
 /// </summary>
 public class ThrowReticle : MonoBehaviour
 {
@@ -104,6 +104,7 @@ public class ThrowReticle : MonoBehaviour
         ShowRing(false);
         if (!showImpactMarker) return;
         if (shield == null || !shield.InHand) return;
+        if (!aiming) return;   // 预瞄点只在按住空格瞄准时显示，其他时候不画
 
         // 起点与真实甩出点完全一致（含 AimSideOffset），预瞄点才会等于真实落点
         Vector3 aim = shield.AimDirection();
