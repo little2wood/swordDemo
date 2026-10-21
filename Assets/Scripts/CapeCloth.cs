@@ -3,7 +3,8 @@ using UnityEngine;
 /// <summary>
 /// 披风布料（Verlet/PBD）：粒子 + 距离约束（横向/纵向结构 + 对角剪切）。
 /// 顶行不是水平直线，而是"肩颈弧线"：两端盖住肩尖（upperarm 外侧）、中段上拱包住后颈（neck_01 上方），
-/// 钉在 anchorBone（spine_02）本地坐标上跟随躯干动画；行宽从肩到下摆线性放宽，静置就是梯形披风轮廓。
+/// 钉在 anchorBone（spine_02）本地坐标上跟随躯干动画（两端角点可改钉左右肩骨 upperarm：抬臂/耸肩时角点跟肩走）；
+/// 行宽从肩到下摆线性放宽，静置就是梯形披风轮廓。
 /// 每帧：Verlet 积分（重力 + 风） → 约束迭代（PBD，与身体碰撞推离交替） → 钉锚点 → 写回网格。
 /// 风场 = 环境微风（双正弦） + 锚点运动相对风：跑动后飘、原地转身甩摆、下落上飘都由锚点速度驱动
 /// （比只看刚体速度多了转向与动画起伏，且包含竖直分量）。
@@ -36,6 +37,10 @@ public class CapeCloth : MonoBehaviour
     [Header("引用（留空自动查找 spine_02）")]
     public Transform anchorBone;
 
+    [Header("肩部锚定")]
+    [Tooltip("顶行两个角点改钉在左右肩骨（upperarm_l/r）上：抬臂/耸肩时角点跟肩走，不再悬空。\n中间肩颈弧线仍钉 spine_02；按世界距离就近绑定肩骨（不猜左右手坐标约定），找不到肩骨时自动回退为全钉 spine_02。\n绑定时按当前轮廓标定位置反算肩骨本地偏移，轮廓零变化只换挂点")]
+    public bool cornersFollowShoulders = true;
+
     [Header("物理（Verlet/PBD）")]
     public float gravity = -9.8f;           // 重力加速度
     [Range(0.8f, 1f)] public float damping = 0.985f;    // 速度保留率（1=无阻尼）
@@ -65,6 +70,7 @@ public class CapeCloth : MonoBehaviour
     Transform spine;
     Vector3[] pos;              // 粒子位置（世界空间）
     Vector3[] prevPos;          // 上一帧位置（Verlet 积分）
+    Vector3[] restLocals;       // 粒子静止位置（spine 本地）：外部代理网格用它算纯形变位移
     Vector3[] anchorLocals;     // 顶行粒子相对锚骨的本地偏移
     Constraint[] cons;          // 距离约束（结构 + 对角剪切）
     struct Constraint { public int a, b; public float rest; }
@@ -77,8 +83,19 @@ public class CapeCloth : MonoBehaviour
     bool anchorInit;
     Transform[] colBones;       // 身体碰撞球挂的骨骼
     float[] colRadii;           // 与 colBones 一一对应的半径
+    Transform[] cornerBones;    // 顶行角点锚骨（upperarm_l/r，index 0=首列 1=末列；null 项回退 spine）
+    Vector3[] cornerLocals;     // 角点相对各自肩骨的本地偏移（绑定时按轮廓标定位置反算，保形）
+    bool cornerAnchorsActive;   // 最近一次绑定时 cornersFollowShoulders 的取值
+    bool cornerAnchorsDirty;    // Play 中切换开关后置位，LateUpdate 懒重绑
 
     void Awake() { BuildNow(); }
+
+    /// 粒子当前世界位置（rows×cols 个；供 Torned 等外部代理网格驱动读取）
+    public Vector3[] ParticlePositions { get { return pos; } }
+    /// 粒子静止位置（spine 锚骨本地空间；代理用它算"纯形变位移"）
+    public Vector3[] ParticleRestLocals { get { return restLocals; } }
+    /// 锚骨（spine_02）
+    public Transform AnchorBone { get { return spine; } }
 
     /// 初始化粒子/约束/网格/碰撞球（Awake 自动调用；编辑模式下也可手动调用预览）
     public void BuildNow()
@@ -168,15 +185,18 @@ public class CapeCloth : MonoBehaviour
         int n = cols * rows;
         pos = new Vector3[n];
         prevPos = new Vector3[n];
+        restLocals = new Vector3[n];
         anchorLocals = new Vector3[cols];
         for (int r = 0; r < rows; r++)
             for (int c = 0; c < cols; c++)
             {
                 Vector3 local = RowLocal(r, c);
                 if (r == 0) anchorLocals[c] = local;
+                restLocals[r * cols + c] = local;
                 pos[r * cols + c] = spine.TransformPoint(local);
             }
         System.Array.Copy(pos, prevPos, n);
+        SetupCornerAnchors();
     }
 
     /// 第 r 行第 c 列粒子的锚骨本地坐标：
@@ -192,6 +212,38 @@ public class CapeCloth : MonoBehaviour
             Mathf.Lerp(-rw / 2f, rw / 2f, tc),
             shoulderHeight + neckArch * arch - length * tr,
             Mathf.Lerp(shoulderBack, neckBack, arch));
+    }
+
+    /// 角点肩部锚定：绑定时把角点世界位（来自 spine 轮廓标定）反算成 upperarm 本地偏移——
+    /// 轮廓零变化，只换挂点；左右肩按"谁近用谁"自动匹配（不猜左右手坐标约定），找不到肩骨就回退 spine（老行为）。
+    /// 必须在 InitParticles 填好 pos 之后调用（角点初始世界位取自轮廓标定结果）
+    void SetupCornerAnchors()
+    {
+        cornerBones = null;
+        cornerLocals = null;
+        cornerAnchorsActive = cornersFollowShoulders;
+        cornerAnchorsDirty = false;
+        if (!cornersFollowShoulders || cols < 2) return;
+        var root = transform.root != null ? transform.root : transform;
+        Transform l = FindDeep(root, "upperarm_l");
+        Transform r = FindDeep(root, "upperarm_r");
+        if (l == null && r == null) return;
+
+        Vector3 w0 = pos[0], w1 = pos[cols - 1];
+        cornerBones = new Transform[2];
+        cornerLocals = new Vector3[2];
+        cornerBones[0] = PickNearest(l, r, w0);
+        cornerBones[1] = PickNearest(l, r, w1);
+        if (cornerBones[0] != null) cornerLocals[0] = cornerBones[0].InverseTransformPoint(w0);
+        if (cornerBones[1] != null) cornerLocals[1] = cornerBones[1].InverseTransformPoint(w1);
+    }
+
+    /// 就近挑肩骨：两侧都有取距 p 近者；某侧缺失用另一侧
+    static Transform PickNearest(Transform a, Transform b, Vector3 p)
+    {
+        if (a == null) return b;
+        if (b == null) return a;
+        return (a.position - p).sqrMagnitude <= (b.position - p).sqrMagnitude ? a : b;
     }
 
     /// 距离约束：横向 + 纵向（结构） + 每格两条对角线（剪切） + 隔粒长程（抗弯）——
@@ -335,11 +387,20 @@ public class CapeCloth : MonoBehaviour
         }
 
         // ---- 顶行锚定：强制对齐锚骨世界位置（最后执行；锚点位移不产生粒子速度） ----
+        // 中段钉 spine_02；两端角点若绑定过肩骨则钉 upperarm（跟肩膀走，消除悬空）
+        if (cornerAnchorsDirty && pos != null && spine != null)
+            SetupCornerAnchors();       // Play 中切换开关：懒重绑（角点会跳到当前肩位）
         if (spine != null)
             for (int c = 0; c < cols; c++)
             {
-                pos[c] = spine.TransformPoint(anchorLocals[c]);
-                prevPos[c] = pos[c];
+                Vector3 p = spine.TransformPoint(anchorLocals[c]);
+                if (cornerBones != null && cornerLocals != null)
+                {
+                    if (c == 0 && cornerBones[0] != null) p = cornerBones[0].TransformPoint(cornerLocals[0]);
+                    else if (c == cols - 1 && cornerBones[1] != null) p = cornerBones[1].TransformPoint(cornerLocals[1]);
+                }
+                pos[c] = p;
+                prevPos[c] = p;
             }
 
         SyncMesh();
@@ -358,6 +419,9 @@ public class CapeCloth : MonoBehaviour
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
     }
+
+    /// Inspector 里切换"角点跟肩"后懒生效（LateUpdate 重绑）；仅开关值变化才置位，避免其他参数改动触发重绑
+    void OnValidate() { if (cornerAnchorsActive != cornersFollowShoulders) cornerAnchorsDirty = true; }
 
     /// 递归查找子孙节点（按名字）
     static Transform FindDeep(Transform root, string name)
