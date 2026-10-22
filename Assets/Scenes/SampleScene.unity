@@ -2653,6 +2653,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
       insertIndex: -1
       addedObject: {fileID: 103912584}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 103912587}
   m_SourcePrefab: {fileID: 100100000, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
 --- !u!4 &103912582 stripped
 Transform:
@@ -2686,6 +2689,21 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 6013398370121929852, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
+--- !u!114 &103912587
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 103912583}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a2131db7ccb6aa49b9ce5ca82f9dedb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlock
+  bounces: 1
+  sparkColor: {r: 1, g: 0.7, b: 0.22, a: 1}
+  sparkScale: 1
 --- !u!1 &106970655
 GameObject:
   m_ObjectHideFlags: 0
@@ -5224,6 +5242,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
       insertIndex: -1
       addedObject: {fileID: 226147967}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 226147970}
   m_SourcePrefab: {fileID: 100100000, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
 --- !u!4 &226147965 stripped
 Transform:
@@ -5257,6 +5278,21 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 6793580640481770557, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
+--- !u!114 &226147970
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 226147966}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a2131db7ccb6aa49b9ce5ca82f9dedb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlock
+  bounces: 1
+  sparkColor: {r: 1, g: 0.7, b: 0.22, a: 1}
+  sparkScale: 1
 --- !u!1 &232525397
 GameObject:
   m_ObjectHideFlags: 0
@@ -11416,6 +11452,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
       insertIndex: -1
       addedObject: {fileID: 518568794}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 518568797}
   m_SourcePrefab: {fileID: 100100000, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
 --- !u!4 &518568792 stripped
 Transform:
@@ -11449,6 +11488,21 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 6793580640481770557, guid: 6b48ee1df7479e44b9e82ae246e1715f, type: 3}
+--- !u!114 &518568797
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 518568793}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a2131db7ccb6aa49b9ce5ca82f9dedb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlock
+  bounces: 1
+  sparkColor: {r: 1, g: 0.7, b: 0.22, a: 1}
+  sparkScale: 1
 --- !u!1 &532051799
 GameObject:
   m_ObjectHideFlags: 0
@@ -17259,6 +17313,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
       insertIndex: -1
       addedObject: {fileID: 820478930}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 820478933}
   m_SourcePrefab: {fileID: 100100000, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
 --- !u!4 &820478928 stripped
 Transform:
@@ -17292,6 +17349,21 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: -7450845959589152506, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
+--- !u!114 &820478933
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 820478929}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a2131db7ccb6aa49b9ce5ca82f9dedb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlock
+  bounces: 1
+  sparkColor: {r: 1, g: 0.7, b: 0.22, a: 1}
+  sparkScale: 1
 --- !u!1 &822094602
 GameObject:
   m_ObjectHideFlags: 0
@@ -23027,6 +23099,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1076808064}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808065}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808066}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1865327341}
@@ -23320,6 +23398,8 @@ MonoBehaviour:
     m_Bits: 1024
   bladeMass: 1.2
   maxSwingSpeed: 8
+  stoneReaction: {fileID: 0}
+  bloodFx: {fileID: 0}
   windowA: {x: 0.4, y: 0.75}
   windowB: {x: 0.35, y: 0.65}
   windowC: {x: 0.28, y: 0.45}
@@ -23513,6 +23593,59 @@ MonoBehaviour:
   bladeRadius: 0.05
   layerName: Blade
   ccdMode: 1
+--- !u!114 &1076808065
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d3c2d670c26927049b4c13ad99742eee, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlockReaction
+  controller: {fileID: 1076808056}
+  anim: {fileID: 1076808053}
+  stateName: Tree_Chop
+  startFrame: 13
+  clipFps: 30
+  clipLength: 0.967
+  recoverFade: 0.12
+  sparkCount: 70
+  sparkSize: 0.05
+  sparkSpeed: 12
+  sparkLifetime: 0.28
+  sparkCone: 40
+  sparkShader: Universal Render Pipeline/Particles/Unlit
+--- !u!114 &1076808066
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9fbbc9b87db30d44a624bd39bbc9baf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BloodFx
+  bloodCount: 24
+  bloodSize: 0.06
+  bloodSpeed: 5
+  bloodCone: 55
+  gravity: 1.2
+  drag: 0.35
+  bloodLifetime: 5
+  fadeRatio: 0.35
+  collideWith:
+    serializedVersion: 2
+    m_Bits: 1
+  dampen: 1
+  radiusScale: 0.6
+  freshColor: {r: 0.62, g: 0.04, b: 0.04, a: 1}
+  dryColor: {r: 0.2, g: 0.03, b: 0.03, a: 1}
+  bloodShader: Universal Render Pipeline/Particles/Unlit
 --- !u!1 &1076958160
 GameObject:
   m_ObjectHideFlags: 0
@@ -31351,15 +31484,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 5.5472383
+      value: 5.57
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 2.4745717
+      value: 2.76
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 12.417772
+      value: 12.44
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
       propertyPath: m_LocalRotation.w
@@ -31400,6 +31533,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1452514954}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1452514957}
   m_SourcePrefab: {fileID: 100100000, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
 --- !u!4 &1452514952 stripped
 Transform:
@@ -31433,6 +31569,21 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 6013398370121929852, guid: 1951c4977a7106b44b074e8f26d74eae, type: 3}
+--- !u!114 &1452514957
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1452514953}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a2131db7ccb6aa49b9ce5ca82f9dedb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlock
+  bounces: 1
+  sparkColor: {r: 1, g: 0.7, b: 0.22, a: 1}
+  sparkScale: 1
 --- !u!1 &1457253048
 GameObject:
   m_ObjectHideFlags: 0
@@ -41321,6 +41472,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1895410471}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1895410474}
   m_SourcePrefab: {fileID: 100100000, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
 --- !u!4 &1895410469 stripped
 Transform:
@@ -41354,6 +41508,21 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: -7450845959589152506, guid: 073b80ad4c541904b92e7a0e022ae7a1, type: 3}
+--- !u!114 &1895410474
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1895410470}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2a2131db7ccb6aa49b9ce5ca82f9dedb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::StoneBlock
+  bounces: 1
+  sparkColor: {r: 1, g: 0.7, b: 0.22, a: 1}
+  sparkScale: 1
 --- !u!1 &1895656692
 GameObject:
   m_ObjectHideFlags: 0

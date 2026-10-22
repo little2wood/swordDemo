@@ -53,6 +53,10 @@ public class PlayerController : MonoBehaviour
     [Tooltip("留空自动从自身/父级取 StoneBlockReaction：命中石头时由它中断挥砍、播砍不动动画并迸火星")]
     public StoneBlockReaction stoneReaction;
 
+    [Header("砍到敌人（溅血）")]
+    [Tooltip("留空自动从自身/父级取 BloodFx：命中敌人时由它在接触点沿挥砍方向溅血")]
+    public BloodFx bloodFx;
+
     [Header("扫掠激活窗口（normalizedTime 区间；前摇/收势不判，按各刀剑尖速度曲线实测标定）")]
     public Vector2 windowA = new Vector2(0.40f, 0.75f);   // A：挥砍爆发 0.46~0.65
     public Vector2 windowB = new Vector2(0.35f, 0.65f);   // B：挥砍爆发 0.375~0.56
@@ -122,6 +126,7 @@ public class PlayerController : MonoBehaviour
         if (guard == null) guard = GetComponentInParent<PlayerGuard>();
         if (parry == null) parry = GetComponentInParent<PlayerParry>();
         if (stoneReaction == null) stoneReaction = GetComponentInParent<StoneBlockReaction>();
+        if (bloodFx == null) bloodFx = GetComponentInParent<BloodFx>();
 
         // 盾飞行中第一次撞到东西 → 相机提前结束投掷观察期
         if (shield != null) shield.FlightFirstHit += OnShieldFirstHit;
@@ -517,6 +522,9 @@ public class PlayerController : MonoBehaviour
         if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
         if (!hitThisSwing.Add(hp)) return;    // 这个目标本刀已结算过
         hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(tipVel, bladeMass), point);   // 冲量决定晃动幅度，命中点决定布娃娃飞散姿态
+
+        // 溅血：沿本帧挥扫方向甩出去。去重在上一行之后，所以同一刀对同一敌人只喷一次
+        if (bloodFx != null) bloodFx.Spray(point, swingDir);
     }
 
     /// 是否处于举盾姿态：GuardUpper 层权重过半（举手姿势已明显叠加）。
