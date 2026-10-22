@@ -99,8 +99,11 @@ public class EnemyAI : MonoBehaviour
 
         // 被弹反/撞飞/起身期间：完全停手（不走、不转身、不攻击）。
         // 这里不能 Stop()：撞飞阶段位移来自 EnemyStagger 给的初速度，每帧清零会把人钉在原地。
+        // 但角速度要清：盾牌这类高速钝器砸中根刚体会留下角速度，硬直期间没人 FaceTo，
+        // 而根刚体 angularDrag=0 不衰减，不清理就会原地自转。
         if (stagger != null && stagger.IsLocked)
         {
+            rb.angularVelocity = Vector3.zero;
             anim.SetBool(MovingId, false);
             return;
         }
@@ -139,8 +142,11 @@ public class EnemyAI : MonoBehaviour
         }
         else
         {
-            // 超出感知：原地待机
+            // 超出感知：原地待机。
+            // 角速度必须清：玩家走远后扔盾砸中根刚体会留下角速度，这里没人 FaceTo（感知范围外不转向），
+            // 不清理就会一直原地自转。只清角速度不动朝向 —— 待机时保持被打之前面向的方向。
             Stop();
+            rb.angularVelocity = Vector3.zero;
             anim.SetBool(MovingId, false);
         }
     }
