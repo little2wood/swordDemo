@@ -480,7 +480,7 @@ public class PlayerController : MonoBehaviour
     {
         var cols = Physics.OverlapCapsule(p1, p2, bladeRadius);
         for (int i = 0; i < cols.Length; i++)
-            SettleHit(cols[i], swingDir, tipVel, cols[i].ClosestPoint(bladeTip.position));   // 重叠无命中点，取物体上离剑尖最近的点
+            SettleHit(cols[i], swingDir, tipVel, cols[i].SafeClosestPoint(bladeTip.position));   // 重叠无命中点，取物体上离剑尖最近的点（地面等不支持类型走包围盒近似）
     }
 
     /// 扫掠检测：上一帧剑尖段胶囊沿挥扫方向扫过帧间距（旋转扫掠以平移近似，帧间误差厘米级）。

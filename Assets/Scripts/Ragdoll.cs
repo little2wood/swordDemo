@@ -31,14 +31,12 @@ public class Ragdoll : MonoBehaviour
     public int ragdollLayer = 9;                // 布娃娃专用层（该层内部互不碰撞）
     public bool ignoreSelfCollision = true;     // 关掉肢体互撞 → 消除抽搐的主因
     public bool retargetCameraOnDeath = true;   // 死亡后把相机跟随目标切到骨盆（否则镜头留在原地）
-    public bool freezeOnSettle = true;          // 静止后冻结，彻底不再抖
     public float settleDelay = 4.0f;            // 多少秒后开始强制减速
-    public float freezeDelay = 5.5f;            // 多少秒后完全冻结（kinematic）
     public float settleDamping = 12f;           // 减速阶段的阻尼
+                                                // （不冻结：尸体保持动态刚体一直留在场景里，被剑/盾碰到还会动）
 
     float activateTime;
     bool dampingRaised;
-    bool frozen;
 
     Animator anim;
     Rigidbody rootBody;
@@ -134,11 +132,11 @@ public class Ragdoll : MonoBehaviour
 
     void Update()
     {
-        if (!active || !freezeOnSettle || frozen) return;
+        // 只做"安静下来"：settleDelay 后加大阻尼让尸体停止滑动/翻滚；
+        // 不再冻结成 kinematic —— 尸体保持动态刚体一直存在，被剑扫到/被盾砸到还会动
+        if (!active || dampingRaised) return;
 
-        float t = Time.time - activateTime;
-
-        if (!dampingRaised && t >= settleDelay)
+        if (Time.time - activateTime >= settleDelay)
         {
             dampingRaised = true;
             foreach (var p in parts)
@@ -146,18 +144,6 @@ public class Ragdoll : MonoBehaviour
                 if (p == null) continue;
                 p.linearDamping = settleDamping;
                 p.angularDamping = settleDamping;
-            }
-        }
-
-        if (t >= freezeDelay)
-        {
-            frozen = true;
-            foreach (var p in parts)
-            {
-                if (p == null) continue;
-                p.linearVelocity = Vector3.zero;
-                p.angularVelocity = Vector3.zero;
-                p.isKinematic = true;   // 冻结：彻底静止，也省 CPU
             }
         }
     }
@@ -275,7 +261,7 @@ public class Ragdoll : MonoBehaviour
     float DistanceToPart(Rigidbody p, Vector3 point)
     {
         var col = p.GetComponent<Collider>();
-        Vector3 closest = col != null ? col.ClosestPoint(point) : p.worldCenterOfMass;
+        Vector3 closest = col != null ? col.SafeClosestPoint(point) : p.worldCenterOfMass;
         return Vector3.Distance(closest, point);
     }
 

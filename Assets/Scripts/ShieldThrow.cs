@@ -640,7 +640,7 @@ public class ShieldThrow : MonoBehaviour
                 var c = overlaps[i];
                 if (c == null || c.isTrigger) continue;
                 if (IsSelfCollider(c)) continue;
-                if (Vector3.Distance(c.ClosestPoint(p), p) < 0.001f) { buried = true; break; }   // 点就在它体内
+                if (Vector3.Distance(c.SafeClosestPoint(p), p) < 0.001f) { buried = true; break; }   // 点就在它体内
             }
             if (!buried) break;
 

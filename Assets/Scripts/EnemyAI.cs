@@ -209,7 +209,7 @@ public class EnemyAI : MonoBehaviour
             //    上一帧的终点重叠也由此处衔接覆盖）
             var cols = Physics.OverlapSphere(prev, clawRadius);
             for (int i = 0; i < cols.Length; i++)
-                SettleHit(cols[i], swingDir, handVel, cols[i].ClosestPoint(now));
+                SettleHit(cols[i], swingDir, handVel, cols[i].SafeClosestPoint(now));
 
             // ② 扫掠球：上一帧→当前帧爪子扫过的路径（cast 自带命中点）
             var hits = Physics.SphereCastAll(prev, clawRadius, swingDir, swingDir.magnitude);

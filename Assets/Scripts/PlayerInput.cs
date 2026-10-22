@@ -38,11 +38,30 @@ public class PlayerInput : MonoBehaviour
 
     void Start()
     {
-        LockCursor();
+        // 有 GameFlowManager 且正处于 UI 阶段（开始菜单/结算）时别锁：光标要留给按钮用，
+        // 由 GameFlowManager 在阶段切换时统一管光标；它不存在（或已在游戏中）才按原样锁上
+        if (GameFlowManager.Instance == null || !GameFlowManager.Instance.IsUIPhase)
+            LockCursor();
     }
 
     void Update()
     {
+        // UI 阶段（开始菜单/暂停/通关/失败）：游戏输入全部清零短路。
+        // 不清的话，点"开始游戏"的那一下左键会进攻击缓冲，进入战斗的瞬间主角就挥一刀；
+        // 暂停菜单点"继续游戏"同理。注意 Update 先于 OnGUI 跑，点击那一帧这里看到的还是 UI 阶段，正好吞掉。
+        if (GameFlowManager.Instance != null && GameFlowManager.Instance.IsUIPhase)
+        {
+            MoveInput = Vector2.zero;
+            MouseDelta = Vector2.zero;
+            AttackBuffered = false;
+            GuardHeld = false;
+            guardBuffered = false;
+            ThrowHeld = false;
+            ThrowReleased = false;
+            prevThrowHeld = false;
+            return;
+        }
+
         var kb = Keyboard.current;
         var mouse = Mouse.current;
 
