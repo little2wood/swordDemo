@@ -45,6 +45,8 @@ public class ShieldThrow : MonoBehaviour
     public float recoverSpeed = 18f;
     [Tooltip("回收弧线的拱起高度（m）：0=直线吸回，越大抛得越高")]
     public float recoverArc = 0.8f;
+    [Tooltip("回收弧线的侧向拱起（m）：0=只在竖直面内拱起；大于 0 时盾绕开直线、螺旋绕回手上。\n侧向自动选边：盾在主角哪一侧就从哪一侧绕（按主角朝向定左右，正前/正后退回右手侧）")]
+    public float recoverSideArc = 0.5f;
     [Tooltip("回收时把盾挂在 socket 之前，先跟到离 socket 这么近")]
     public float recoverSnapDist = 0.12f;
 
@@ -96,6 +98,7 @@ public class ShieldThrow : MonoBehaviour
     Quaternion returnFromRot;
     float returnT;
     float returnDuration;
+    Vector3 returnSideDir;      // 回程弧线的水平侧向（自动选边：盾在主角哪侧就从哪侧绕；sideArc=0 时为 zero）
 
     // 破防掉盾：动画出手帧之前盾仍挂在 socket 上跟着动画走，逐帧采样它的世界速度/角速度，
     // 到出手帧时把这些"当时盾牌的物理量"原样交给刚体 —— 飞出去的方向和速度就是动画甩出来的样子
@@ -222,8 +225,10 @@ public class ShieldThrow : MonoBehaviour
         prevReturnPos = returnFrom;
         returnFromRot = transform.rotation;
         returnT = 0f;
-        float dist = Vector3.Distance(returnFrom, socketParent.TransformPoint(socketLocalPos));
+        Vector3 targetPos = socketParent.TransformPoint(socketLocalPos);
+        float dist = Vector3.Distance(returnFrom, targetPos);
         returnDuration = Mathf.Max(0.05f, dist / Mathf.Max(0.01f, recoverSpeed));
+        returnSideDir = recoverSideArc > 0.0001f ? ReturnSideDir(returnFrom, targetPos) : Vector3.zero;
 
         if (rb != null) rb.isKinematic = true;   // detectCollisions 保持 true：照样撞飞箱子
         Current = State.Returning;
@@ -375,10 +380,11 @@ public class ShieldThrow : MonoBehaviour
         Vector3 targetPos = socketParent.TransformPoint(socketLocalPos);
         Quaternion targetRot = socketParent.rotation * socketLocalRot;
 
-        // 位置：直线插值 + 正弦拱起（两端为 0、中点最高）
+        // 位置：直线插值 + 竖直正弦拱起 + 水平侧向正弦绕行（两端为 0、中点最大；侧向自动选边，盾从所在侧绕回）
         Vector3 flat = Vector3.Lerp(returnFrom, targetPos, k);
         float arc = recoverArc * Mathf.Sin(k * Mathf.PI);
-        transform.position = flat + Vector3.up * arc;
+        float sideArc = recoverSideArc * Mathf.Sin(k * Mathf.PI);
+        transform.position = flat + Vector3.up * arc + returnSideDir * sideArc;
 
         // 路径扫掠：上一位置→当前位置的胶囊段压到敌人/石头就算撞上（帧率无关，不依赖物理消息）
         var sweepTarget = SweepHitReturn(out Collider hitCol);
@@ -555,15 +561,37 @@ public class ShieldThrow : MonoBehaviour
         return SweepTarget.None;
     }
 
-    /// 召回弧线在当前进度的瞬时速度（位置对时间求导）：直线段分量 + 正弦拱起的竖直分量
+    /// 召回弧线在当前进度的瞬时速度（位置对时间求导）：直线段分量 + 竖直拱起与侧向绕行的正弦导数分量
     Vector3 ReturnVelocity()
     {
         if (socketParent == null || returnDuration < 0.0001f) return transform.forward * recoverSpeed;
         Vector3 targetPos = socketParent.TransformPoint(socketLocalPos);
         float k = Mathf.Clamp01(returnT / returnDuration);
+        // 正弦偏移对时间的导数：d/dt [A·sin(kπ)] = A·π·cos(kπ) / duration（竖直与侧向同构）
+        float dArc = Mathf.PI * Mathf.Cos(k * Mathf.PI) / returnDuration;
         Vector3 v = (targetPos - returnFrom) / returnDuration;
-        v += Vector3.up * (recoverArc * Mathf.PI * Mathf.Cos(k * Mathf.PI) / returnDuration);
+        v += Vector3.up * (recoverArc * dArc);
+        v += returnSideDir * (recoverSideArc * dArc);
         return v;
+    }
+
+    /// <summary>
+    /// 回程侧向（水平单位向量，自动选边）：盾在主角哪一侧就从哪一侧绕。
+    /// 候选是回程直线的两条水平法线（±Cross(up, back)），取"主角右侧"投影更大的那条；
+    /// 盾在正前/正后（投影≈0，两侧无差别）退回右手侧，符合回旋镖从右手绕回的直觉。
+    /// </summary>
+    Vector3 ReturnSideDir(Vector3 from, Vector3 to)
+    {
+        Vector3 back = to - from;       // 盾 → 主角
+        back.y = 0f;
+        if (back.sqrMagnitude < 1e-6f) back = owner != null ? owner.forward : Vector3.forward;
+        back.Normalize();
+        Vector3 side = Vector3.Cross(Vector3.up, back);
+        Vector3 right = owner != null ? owner.right : Vector3.right;
+        right.y = 0f;
+        float dot = right.sqrMagnitude > 1e-6f ? Vector3.Dot(side, right.normalized) : 0f;
+        float sideSign = Mathf.Abs(dot) > 1e-6f ? Mathf.Sign(dot) : 1f;
+        return side * sideSign;
     }
 
     /// <summary>
