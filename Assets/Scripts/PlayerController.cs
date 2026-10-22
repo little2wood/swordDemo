@@ -49,6 +49,10 @@ public class PlayerController : MonoBehaviour
     public float bladeMass = 2f;        // 剑的有效质量：冲量 = 剑尖速度(m/s) × 该质量(kg)，单位 N·s
     public float maxSwingSpeed = 18f;   // 剑尖速度上限（m/s）：防卡顿帧或速度峰值把物体弹射上天
 
+    [Header("砍到石头（StoneBlock）")]
+    [Tooltip("留空自动从自身/父级取 StoneBlockReaction：命中石头时由它中断挥砍、播砍不动动画并迸火星")]
+    public StoneBlockReaction stoneReaction;
+
     [Header("扫掠激活窗口（normalizedTime 区间；前摇/收势不判，按各刀剑尖速度曲线实测标定）")]
     public Vector2 windowA = new Vector2(0.40f, 0.75f);   // A：挥砍爆发 0.46~0.65
     public Vector2 windowB = new Vector2(0.35f, 0.65f);   // B：挥砍爆发 0.375~0.56
@@ -76,6 +80,7 @@ public class PlayerController : MonoBehaviour
     bool sweepInit;         // 扫掠起点是否已采样
     readonly HashSet<Health> hitThisSwing = new HashSet<Health>();  // 本刀已结算的目标（对同一目标只结算一次）
     readonly HashSet<Rigidbody> hitPropsThisSwing = new HashSet<Rigidbody>();  // 本刀已推过的可互动物体（一次挥砍只推一次）
+    readonly HashSet<StoneBlock> bouncedThisSwing = new HashSet<StoneBlock>();  // 本刀已弹过刀的石头（一块石头只响应一次）
 
     // Animator 参数与状态名 hash
     static readonly int MovingId = Animator.StringToHash("Moving");
@@ -116,6 +121,7 @@ public class PlayerController : MonoBehaviour
         if (thirdPersonCamera == null) thirdPersonCamera = Camera.main != null ? Camera.main.GetComponent<ThirdPersonCamera>() : null;
         if (guard == null) guard = GetComponentInParent<PlayerGuard>();
         if (parry == null) parry = GetComponentInParent<PlayerParry>();
+        if (stoneReaction == null) stoneReaction = GetComponentInParent<StoneBlockReaction>();
 
         // 盾飞行中第一次撞到东西 → 相机提前结束投掷观察期
         if (shield != null) shield.FlightFirstHit += OnShieldFirstHit;
@@ -136,20 +142,30 @@ public class PlayerController : MonoBehaviour
     {
         SweepHit();     // 扫掠检测跟动画帧走（Animator 在 Update 驱动），剑尖采样按渲染帧稳定推进
 
+        // ---- 砍到石头的锁定：吞掉全部待处理输入（松开空格/攻击缓冲/右键）----
+        //      不吞的话，解锁那一帧会立刻执行排队的那一下，玩家会觉得"我没按它自己动了"
+        bool stoneBlocking = stoneReaction != null && stoneReaction.IsBlocking;
+        if (stoneBlocking)
+        {
+            input.TakeThrowRelease();
+            input.TakeAttackRequest();
+            input.TakeGuardRequest();
+        }
+
         bool released = input.TakeThrowRelease();   // 每帧都消费一次"松开空格"，避免事件堆积到下一次瞄准
         // ---- 投盾：松开空格的那一帧调用（TakeThrowRelease 每帧都要消费一次，避免事件堆积） ----
-        if (released && aimMode) ReleaseThrow();
+        if (released && aimMode && !stoneBlocking) ReleaseThrow();
 
         bool stunnedUp = IsStunned();
         bool parryHoldUp = parry != null && parry.IsHolding;
 
         // ---- 投盾：按住空格 = 瞄准（拉近镜头、突出预瞄点），松开 = 掷出 ----
-        bool canThrow = shield != null && shield.InHand && CanStartThrow() && !stunnedUp && !parryHoldUp;
+        bool canThrow = shield != null && shield.InHand && CanStartThrow() && !stunnedUp && !parryHoldUp && !stoneBlocking;
 
         // ---- 右键按下的那一帧：盾在手=尝试弹反（进入防御的瞬间）；盾不在手（飞行中/已落地）=召回 ----
         //      破防硬直/弹反定身期间照常消费掉这次按下但不执行
         bool guardPressed = input.TakeGuardRequest();
-        if (guardPressed && !stunnedUp && !parryHoldUp)
+        if (guardPressed && !stunnedUp && !parryHoldUp && !stoneBlocking)
         {
             if (shield != null && !shield.InHand)
             {
@@ -247,6 +263,7 @@ public class PlayerController : MonoBehaviour
 
         bool stunned = IsStunned();     // 破防硬直：禁止一切操作（移动/转向/攻击/投掷/举盾/召回）
         bool parryHold = parry != null && parry.IsHolding;   // 弹反定身：不能移动/转向/投掷/召回，但左键可以打反击
+        bool stoneBlocking = stoneReaction != null && stoneReaction.IsBlocking;   // 砍到石头：同上禁一切，唯独镜头不归它管
 
         Vector2 mv = input.MoveInput;
         bool hasMove = mv.sqrMagnitude > 0.01f;
@@ -271,7 +288,7 @@ public class PlayerController : MonoBehaviour
         {
             // 交给 PlayerParry
         }
-        else if (IsAttackChain() || stunned || parryHold || throwPending || throwLockTimer > 0f || !hasMove)
+        else if (IsAttackChain() || stunned || parryHold || stoneBlocking || throwPending || throwLockTimer > 0f || !hasMove)
         {
             ZeroHorizontalVelocity();
         }
@@ -284,12 +301,12 @@ public class PlayerController : MonoBehaviour
         }
 
         // ---- 朝向：只在投掷起手阶段转去投掷方向；其余时候平滑转向移动方向（攻击链全程锁定不转，举盾移动照常转向） ----
-        if (throwAiming && !IsAttackChain() && !stunned && !parryHold)
+        if (throwAiming && !IsAttackChain() && !stunned && !parryHold && !stoneBlocking)
         {
             Quaternion aimTarget = Quaternion.Euler(0f, throwAimYaw, 0f);
             rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, aimTarget, throwTurnSpeed * Time.fixedDeltaTime));
         }
-        else if (hasMove && !IsAttackChain() && !stunned && !parryHold)
+        else if (hasMove && !IsAttackChain() && !stunned && !parryHold && !stoneBlocking)
         {
             float targetYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg + facingOffset;
             Quaternion target = Quaternion.Euler(0f, targetYaw, 0f);
@@ -298,13 +315,13 @@ public class PlayerController : MonoBehaviour
 
         // ---- 动画参数：投掷起手/收势期间不报"在移动"，否则会原地踩跑步动画 ----
         //      举盾照常报 Moving：腿在 Base 层跑动（Idle/Jog），上半身由 GuardUpper 层叠举盾姿势
-        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold);
+        anim.SetBool(MovingId, hasMove && throwLockTimer <= 0f && !throwPending && !stunned && !parryHold && !stoneBlocking);
 
         // ---- 防御：按住右键举盾；召回飞行中强制举盾（左手保持举盾姿势直到盾回到手上）----
         //      举盾输入在攻击链期间不响应（链结束仍按着会自动举起），召回强制项不受此限。
         // 破防硬直期间冻结 Guard：破防动画必须完整播出。
         // 弹反定身则反过来：必须保持 Guard=true，主角才一直举着盾（反击动画由 PlayerParry 强制切，不吃过渡竞争）。
-        bool guardHeld = parryHold || shieldReturning || (input.GuardHeld && !IsAttackChain());
+        bool guardHeld = (parryHold || shieldReturning || (input.GuardHeld && !IsAttackChain())) && !stoneBlocking;
         if (!stunned) anim.SetBool(GuardId, guardHeld);
 
         // ---- GuardUpper 层权重：举盾姿势叠加在上半身（腿照常 Idle/Jog）；
@@ -312,7 +329,7 @@ public class PlayerController : MonoBehaviour
         //      其余时候向目标平滑趋近（举手/收盾的过渡效果由权重的淡入淡出完成）----
         if (guardLayerIdx >= 0)
         {
-            float guardTarget = (!stunned && guardHeld && !IsFullBodyAction()) ? 1f : 0f;
+            float guardTarget = (!stunned && guardHeld && !IsFullBodyAction() && !stoneBlocking) ? 1f : 0f;
             float w = anim.GetLayerWeight(guardLayerIdx);
             if (!Mathf.Approximately(w, guardTarget))
                 anim.SetLayerWeight(guardLayerIdx, Mathf.MoveTowards(w, guardTarget, Time.fixedDeltaTime * guardWeightSpeed));
@@ -327,7 +344,7 @@ public class PlayerController : MonoBehaviour
                 if (parry != null && !parry.Riposted) parry.Riposte();
                 else anim.ResetTrigger(AttackId);
             }
-            else if (!stunned && CanStartAttack(hasMove))
+            else if (!stunned && !stoneBlocking && CanStartAttack(hasMove))
             {
                 anim.SetTrigger(AttackId);
             }
@@ -378,6 +395,7 @@ public class PlayerController : MonoBehaviour
             sweepInit = false;
             hitThisSwing.Clear();
             hitPropsThisSwing.Clear();
+            bouncedThisSwing.Clear();
             return;
         }
 
@@ -387,6 +405,7 @@ public class PlayerController : MonoBehaviour
             sweepInit = false;
             hitThisSwing.Clear();
             hitPropsThisSwing.Clear();
+            bouncedThisSwing.Clear();
         }
 
         // 进度窗口：前摇/收势阶段剑尖轨迹不算攻击，窗口外不检测。
@@ -480,6 +499,17 @@ public class PlayerController : MonoBehaviour
             // 这里只登记一下，保持"一次挥砍对每个物体只处理一次"的语义，避免逐帧重复。
             // （想改回冲量模型就换成 PropImpulse.Apply(...) 并禁用 BladeCollider）
             if (col.attachedRigidbody != null) hitPropsThisSwing.Add(col.attachedRigidbody);
+            return;
+        }
+
+        // ---- 石头/硬质障碍：剑砍不动 → 中断挥砍 + 播砍不动动画 + 迸火星 ----
+        //      接触点已经有了（刃线取物体上离剑尖最近的点、扫掠取 cast 命中点），直接传给反馈脚本当火星的出生地
+        var stone = col.GetComponentInParent<StoneBlock>();
+        if (stone != null)
+        {
+            if (!stone.bounces) return;
+            if (!bouncedThisSwing.Add(stone)) return;   // 这块石头本刀已响应过
+            if (stoneReaction != null) stoneReaction.HitStone(point, swingDir, stone);
             return;
         }
 
