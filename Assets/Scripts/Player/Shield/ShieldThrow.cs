@@ -2,11 +2,13 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 盾牌投掷 —— 步骤①：出手与飞行。
-/// 空格按屏幕中心甩出，出手后完全交给物理：重力按 gravityScale 缩放 + 微阻尼 + 绕盾面法线的自旋，
-/// 没有任何追踪/制导，轨迹全由出手方向决定；停下来后冻结在原地。
-/// 本步只做出手与飞行：不含回收、不含命中结算、不含预测线（后续步骤补）。
-/// 状态：InHand → Flying → Loose
+/// 盾牌投掷：出手、飞行、召回、命中结算、破防掉盾的一体式状态机。
+/// 出手：空格瞄准（ThrowReticle 用与飞行相同的积分画预瞄点），松开甩出 —— 完全交给物理：
+/// 重力按 gravityScale 缩放 + 微阻尼 + 绕盾面法线的自旋，没有任何追踪/制导，轨迹全由出手方向决定；停下后冻结在原地。
+/// 召回：右键把盾沿"竖直拱起 + 水平侧向绕行"的弧线吸回手（kinematic 插值，路径扫掠兜底敌人/石头命中并中断）。
+/// 命中结算：飞行/召回途中撞到 Prop 击飞、敌人扣血（SettleHit），撞石头只中断召回、无伤害。
+/// 破防掉盾：PlayerGuard 破防时按动画逐帧采样的手速把盾打飞（BeginBreakThrow），之后复用 Flying 流程。
+/// 状态：InHand → Flying → Loose → Returning（召回中）→ InHand；破防掉盾从 InHand 直接进 Flying。
 /// </summary>
 public class ShieldThrow : MonoBehaviour
 {
@@ -72,7 +74,7 @@ public class ShieldThrow : MonoBehaviour
     public float restSpeed = 1.0f;                      // 低于该速度视为"停下来"
     public float restTime = 0.3f;                       // 持续这么久才冻结
 
-    /// <summary>当前状态（后续步骤用它来判定能不能再投 / 能不能回收）。</summary>
+    /// <summary>当前状态：InHand 可投；Flying/Loose 可召回；Returning 中不可再投、召回不可重复触发。</summary>
     public State Current { get; private set; } = State.InHand;
     /// <summary>盾是否还在手上。</summary>
     public bool InHand { get { return Current == State.InHand; } }

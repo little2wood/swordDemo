@@ -16,6 +16,9 @@ public class CapeCloth : MonoBehaviour
     public int rows = 10;           // 行（长向粒子数）
     public float length = 0.7f;     // 垂落长度（m）
 
+    
+    
+    
     [Header("披风轮廓（相对锚骨 spine_02 的本地坐标，按本骨架实测标定）")]
     [Tooltip("肩线全宽（m）：顶行两端落在肩尖（upperarm x=±0.192）略外侧")]
     public float topWidth = 0.42f;

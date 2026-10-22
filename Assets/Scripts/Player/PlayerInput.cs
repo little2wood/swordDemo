@@ -3,6 +3,8 @@ using UnityEngine.InputSystem;
 
 /// <summary>
 /// 输入采集层：只负责读取硬件输入，不做任何游戏逻辑。
+/// 唯一例外是 UI 阶段短路：开始菜单/暂停/结算期间（GameFlowManager.IsUIPhase）把全部输入清零 ——
+/// 否则点"开始游戏"的左键会漏进攻击缓冲，进战斗瞬间主角就挥一刀；Update 先于 OnGUI 跑，点按钮那帧正好在这里吞掉。
 /// 移动/攻击的语义解释（含攻击状态过滤）由 PlayerController 完成。
 /// </summary>
 public class PlayerInput : MonoBehaviour
