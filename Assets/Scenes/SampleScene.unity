@@ -32435,7 +32435,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 2.874684
+      value: 0.135
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       propertyPath: m_LocalPosition.z
@@ -45983,7 +45983,8 @@ MonoBehaviour:
   maxThrowSpeed: 22
   throwDamage: 5
   recoverSpeed: 18
-  recoverArc: 0.8
+  recoverArc: 1.35
+  recoverSideArc: 0.51
   recoverSnapDist: 0.12
   breakReleaseFrame: 9
   breakClipFps: 30
