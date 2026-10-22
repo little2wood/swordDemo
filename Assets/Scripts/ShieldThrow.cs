@@ -115,6 +115,12 @@ public class ShieldThrow : MonoBehaviour
     readonly HashSet<Health> hitThisThrowHealth = new HashSet<Health>();
     Vector3 lastVel;        // 最近一次 FixedUpdate 的盾速度（碰撞时物理已改过 rb，用它当碰撞前速度）
 
+    // 召回路径扫掠（帧率无关的敌人检测）：
+    // 召回的盾是 kinematic 且在 Update 里逐帧瞬移，物理引擎的离散重叠检测实测会漏掉
+    // 穿过敌人的碰撞消息（帧间位移大时整段隧穿）——不能只依赖 OnCollisionEnter，自己兜底
+    readonly Collider[] sweepBuf = new Collider[32];
+    Vector3 prevReturnPos;  // 上一帧的召回位置（扫掠段起点）
+
     /// 飞行途中第一次撞到外部物体时触发（供相机提前结束"投掷观察期"等外部逻辑使用）
     public event System.Action FlightFirstHit;
 
@@ -204,7 +210,13 @@ public class ShieldThrow : MonoBehaviour
         if (Current != State.Flying && Current != State.Loose) return;
         if (socketParent == null) { SetIdle(); return; }
 
+        // 命中去重按"一次飞行"算：召回是独立的一次飞行，集合要重新清空——
+        // 否则投掷时已经打过的敌人，召回再撞到就不会结算了
+        hitThisThrow.Clear();
+        hitThisThrowHealth.Clear();
+
         returnFrom = transform.position;
+        prevReturnPos = returnFrom;
         returnFromRot = transform.rotation;
         returnT = 0f;
         float dist = Vector3.Distance(returnFrom, socketParent.TransformPoint(socketLocalPos));
@@ -365,6 +377,14 @@ public class ShieldThrow : MonoBehaviour
         float arc = recoverArc * Mathf.Sin(k * Mathf.PI);
         transform.position = flat + Vector3.up * arc;
 
+        // 路径扫掠：上一位置→当前位置的胶囊段压到敌人就算撞上（帧率无关，不依赖物理消息）
+        if (SweepHitEnemy(out Collider hitCol))
+        {
+            BreakReturnBySweep(hitCol);
+            return;
+        }
+        prevReturnPos = transform.position;
+
         // 朝向：回程姿态转回握持姿态，同时叠加自旋
         Quaternion baseRot = Quaternion.Slerp(returnFromRot, targetRot, k);
         Quaternion spin = Quaternion.AngleAxis(spinRate * returnT * Mathf.Rad2Deg, DetectSpinAxisLocal());
@@ -400,8 +420,19 @@ public class ShieldThrow : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
-        if (Current != State.Flying) return;
+        if (Current != State.Flying && Current != State.Returning) return;
         if (IsSelfCollider(collision.collider)) return;   // 保险：IgnoreCollision 已挡住自己人，这里再筛一次
+
+        // ---- 召回途中：撞到敌人 → 结算伤害并中断召回；撞到别的（箱子等）维持现状 ----
+        // 召回的盾是 kinematic 且逐帧瞬移，物理消息发不发并不可靠（会隧穿漏检），
+        // 真正兜底的是 Update 里的路径扫掠 SweepHitEnemy —— 这里收到消息就提前精确结算一次。
+        if (Current == State.Returning)
+        {
+            var hpBack = collision.collider.GetComponentInParent<Health>();
+            if (hpBack != null && !hpBack.IsDead && hpBack.team == Health.Team.Enemy)
+                BreakReturn(collision);
+            return;
+        }
 
         Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
         SettleHit(collision.collider, point);
@@ -413,6 +444,83 @@ public class ShieldThrow : MonoBehaviour
             firstHitFired = true;
             var handler = FlightFirstHit; if (handler != null) handler();
         }
+    }
+
+    /// <summary>
+    /// 召回途中撞到敌人（物理消息入口）：结算伤害并中断召回，核心见 BreakReturnCore。
+    /// </summary>
+    void BreakReturn(Collision collision)
+    {
+        Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
+        BreakReturnCore(collision.collider, point);
+    }
+
+    /// 召回途中撞到敌人（路径扫掠入口）：查询拿不到精确接触点，用盾当前位置
+    void BreakReturnBySweep(Collider hitCol)
+    {
+        BreakReturnCore(hitCol, transform.position);
+    }
+
+    /// <summary>
+    /// 召回中断核心：结算伤害并中断召回。
+    /// 伤害走 SettleHit 的敌人分支（扣血 → Health.OnDamaged → HitReaction 自动播放受击摆动），
+    /// 冲量/方向用召回弧线在当前进度的瞬时速度 —— 与投掷命中同一把标尺。
+    /// 之后脱离插值、转回动态刚体，按当前速度交给物理自然弹开、落地；
+    /// 切回 Flying 复用现有的"重力 + 减速 → 停下冻结(Loose)"流程，玩家可随时再按右键召回。
+    /// 主角侧零配合：IsReturning 变 false 后强制举盾自动解除，左手自然放下。
+    /// 开头的状态检查兼任防重入：物理消息与扫掠探测可能同帧都命中，只处理一次。
+    /// </summary>
+    void BreakReturnCore(Collider hitCol, Vector3 point)
+    {
+        if (Current != State.Returning) return;
+
+        // 召回弧线的瞬时速度：既是中断后盾的初速度，也是结算用的"碰撞前速度"
+        Vector3 v = ReturnVelocity();
+        lastVel = v;
+
+        SettleHit(hitCol, point);   // 与投掷命中同一套结算（含去重；若刚被跳过也照常中断）
+
+        rb.isKinematic = false;
+        rb.linearVelocity = v;
+        Vector3 axis = transform.TransformDirection(DetectSpinAxisLocal());   // 延续出手的盘式自旋
+        rb.angularVelocity = (axis.sqrMagnitude > 1e-6f ? axis.normalized : Vector3.up) * spinRate;
+        Current = State.Flying;
+    }
+
+    /// <summary>
+    /// 召回路径扫掠：上一帧位置→当前位置的胶囊段（半径 0.3m ≈ 盾半径+余量）
+    /// 压到敌人的任何碰撞体（躯干胶囊或骨骼部件）都算命中。
+    /// 顺带把物理消息覆盖不到的"擦手臂"命中也兜住了。
+    /// </summary>
+    bool SweepHitEnemy(out Collider hitCol)
+    {
+        hitCol = null;
+        if ((transform.position - prevReturnPos).sqrMagnitude < 1e-8f) return false;
+
+        int n = Physics.OverlapCapsuleNonAlloc(prevReturnPos, transform.position, 0.3f,
+                                               sweepBuf, ~0, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
+        {
+            var c = sweepBuf[i];
+            if (c == null || c == col) continue;
+            if (IsSelfCollider(c)) continue;
+            var hp = c.GetComponentInParent<Health>();
+            if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) continue;
+            hitCol = c;
+            return true;
+        }
+        return false;
+    }
+
+    /// 召回弧线在当前进度的瞬时速度（位置对时间求导）：直线段分量 + 正弦拱起的竖直分量
+    Vector3 ReturnVelocity()
+    {
+        if (socketParent == null || returnDuration < 0.0001f) return transform.forward * recoverSpeed;
+        Vector3 targetPos = socketParent.TransformPoint(socketLocalPos);
+        float k = Mathf.Clamp01(returnT / returnDuration);
+        Vector3 v = (targetPos - returnFrom) / returnDuration;
+        v += Vector3.up * (recoverArc * Mathf.PI * Mathf.Cos(k * Mathf.PI) / returnDuration);
+        return v;
     }
 
     /// <summary>
