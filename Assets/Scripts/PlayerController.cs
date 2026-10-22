@@ -15,6 +15,10 @@ public class PlayerController : MonoBehaviour
     [Header("移动")]
     public float moveSpeed = 6f;        // m/s
 
+    [Header("坡地贴合")]
+    [Tooltip("探地判定距离（米，从腰部的探地起点往下算）：贴地范围内行走时竖直速度会钉成坡面速度，超过它（跳跃/击飞腾空）不干预")]
+    public float snapMaxDist = 0.75f;
+
     [Header("朝向")]
     public float turnSpeed = 540f;      // deg/s，朝向转向移动方向的角速度
     public float facingOffset = 0f;     // 模型自带朝向偏移：实测模型正面朝 +Z 故为 0；若角色背对移动方向改成 180
@@ -302,6 +306,26 @@ public class PlayerController : MonoBehaviour
             Vector3 v = rb.linearVelocity;
             v.x = dir.x * moveSpeed;
             v.z = dir.z * moveSpeed;
+
+            // ---- 坡面贴合：把竖直速度钉成"期望速度在坡面上的竖直分量" ----
+            // 没有它，坡上行走是"水平匀速 + 自由落体"的小抛物线（飞出坡面→撞回→再飞出）。
+            // 钉住之后四个方向全贴：下坡自动吸附、横切等高线跟随地形缓降、上坡沿坡爬升
+            // （上坡的正值由坡面碰撞接管——角色贴坡时切向速度不会脱离坡面）。
+            var ground = ProbeGround();
+            if (ground.hit && ground.dist <= snapMaxDist)
+            {
+                float slope = 1f - ground.normal.y;     // 0=平地，越大越陡
+                if (slope > 0.001f)
+                {
+                    var vh = new Vector3(dir.x, 0f, dir.z) * moveSpeed;                        // 期望水平速度
+                    v.y = vh.y - ground.normal.y * Vector3.Dot(vh, ground.normal);             // 投影到坡面后的竖直分量
+                }
+                else if (v.y > 0f)
+                {
+                    v.y = 0f;   // 走回平地：掐掉坡上带来的残留爬升，避免翻过坡顶时小跳一下
+                }
+            }
+
             rb.linearVelocity = v;
         }
 
@@ -584,11 +608,36 @@ public class PlayerController : MonoBehaviour
     void ZeroHorizontalVelocity()
     {
         Vector3 v = rb.linearVelocity;
-        if (v.x != 0f || v.z != 0f)
+        if (v.x != 0f || v.z != 0f || v.y > 0f)
         {
             v.x = 0f;
             v.z = 0f;
+            v.y = Mathf.Min(v.y, 0f);   // 掐掉上坡残留的爬升速度：停下不再"升一小段再落下"（向下的下落分量保留，交给重力）
             rb.linearVelocity = v;
         }
+    }
+
+    readonly RaycastHit[] groundHits = new RaycastHit[8];
+
+    /// <summary>
+    /// 向下探地：返回脚下地面的（是否命中, 从腰部探地起点到地面的距离, 地面法线）。
+    /// 起点放在身体内部（Unity 射线不命中起点所在的碰撞体），但腿部的部件胶囊挡在路径上，
+    /// 所以用 NonAlloc 全量收再过滤掉自己的部件，取最近的外部命中。
+    /// </summary>
+    (bool hit, float dist, Vector3 normal) ProbeGround()
+    {
+        var origin = transform.position + Vector3.up * 0.5f;
+        int n = Physics.RaycastNonAlloc(origin, Vector3.down, groundHits, snapMaxDist, ~0, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue;
+        Vector3 normal = Vector3.up;
+        bool found = false;
+        for (int i = 0; i < n; i++)
+        {
+            var h = groundHits[i];
+            if (h.collider == null) continue;
+            if (h.collider.transform.root == transform) continue;   // 自己的部件不算"地面"
+            if (h.distance < best) { best = h.distance; normal = h.normal; found = true; }
+        }
+        return (found, best, normal);
     }
 }
