@@ -84,6 +84,7 @@ public class CapeCloth : MonoBehaviour
     Vector3 lastAnchorPos;      // 上一帧锚点世界位置：算锚点速度（相对风的来源）
     bool anchorInit;
     Transform[] colBones;       // 身体碰撞球挂的骨骼
+    
     float[] colRadii;           // 与 colBones 一一对应的半径
     Transform[] cornerBones;    // 顶行角点锚骨（upperarm_l/r，index 0=首列 1=末列；null 项回退 spine）
     Vector3[] cornerLocals;     // 角点相对各自肩骨的本地偏移（绑定时按轮廓标定位置反算，保形）

@@ -20,10 +20,10 @@ public class PlayerInput : MonoBehaviour
     /// </summary>
     public bool AttackBuffered { get; private set; }
 
-    /// <summary>右键当前是否按住（防御意图）。持续状态，不是单帧事件。</summary>
+    /// <summary>右键或 K 键当前是否按住（防御意图）。持续状态，不是单帧事件。</summary>
     public bool GuardHeld { get; private set; }
 
-    /// <summary>右键按下的单帧意图：盾不在手上时用它触发召回。持续按住不会重复触发。</summary>
+    /// <summary>右键/K 键按下的单帧意图：盾不在手上时用它触发召回。持续按住不会重复触发。</summary>
     bool guardBuffered;
 
     /// <summary>
@@ -65,15 +65,19 @@ public class PlayerInput : MonoBehaviour
         // 鼠标位移：供相机做球面轨道旋转
         MouseDelta = mouse != null ? mouse.delta.ReadValue() : Vector2.zero;
 
-        // 鼠标左键：按下瞬间 → 置入缓冲（由 PlayerController 消费或丢弃）
-        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+        // 鼠标左键 / J 键：按下瞬间 → 置入缓冲（由 PlayerController 消费或丢弃）
+        if ((mouse != null && mouse.leftButton.wasPressedThisFrame)
+            || (kb != null && kb.jKey.wasPressedThisFrame))
         {
             AttackBuffered = true;
         }
 
-        // 鼠标右键：按住即防御，松开即收盾
-        GuardHeld = mouse != null && mouse.rightButton.isPressed;
-        if (mouse != null && mouse.rightButton.wasPressedThisFrame) guardBuffered = true;   // 按下瞬间：供召回用
+        // 鼠标右键 / K 键：按住即防御，松开即收盾
+        GuardHeld = (mouse != null && mouse.rightButton.isPressed)
+                 || (kb != null && kb.kKey.isPressed);
+        bool guardPressed = (mouse != null && mouse.rightButton.wasPressedThisFrame)
+                         || (kb != null && kb.kKey.wasPressedThisFrame);
+        if (guardPressed) guardBuffered = true;   // 按下瞬间：供召回用
 
         // 空格：按住=瞄准，松开=掷出
         bool held = kb != null && kb.spaceKey.isPressed;
@@ -98,7 +102,7 @@ public class PlayerInput : MonoBehaviour
         return v;
     }
 
-    /// <summary>消费右键按下请求：返回本帧是否按下了右键，并清除标志。</summary>
+    /// <summary>消费防御按下请求（右键或 K 键）：返回本帧是否按下，并清除标志。</summary>
     public bool TakeGuardRequest()
     {
         bool v = guardBuffered;

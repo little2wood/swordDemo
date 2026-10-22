@@ -18375,7 +18375,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: cc638e441f7a27a498e2c5d03ec81431, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0.058
+      value: 0.057
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: cc638e441f7a27a498e2c5d03ec81431, type: 3}
       propertyPath: m_LocalRotation.w
@@ -32071,8 +32071,10 @@ Material:
   m_EnableInstancingVariants: 1
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: 2450
-  stringTagMap: {}
-  disabledShaderPasses: []
+  stringTagMap:
+    RenderType: TransparentCutout
+  disabledShaderPasses:
+  - MOTIONVECTORS
   m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
@@ -32102,7 +32104,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
-        m_Texture: {fileID: 0}
+        m_Texture: {fileID: 2800000, guid: 2ceaf5e6aa95fd34aa7abc3244217920, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MetallicGlossMap:
@@ -32137,7 +32139,7 @@ Material:
     m_Floats:
     - _AddPrecomputedVelocity: 0
     - _AlphaClip: 1
-    - _AlphaToMask: 0
+    - _AlphaToMask: 1
     - _Blend: 0
     - _BlendModePreserveSpecular: 1
     - _BumpScale: 1
@@ -34286,6 +34288,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1612336314}
+  - component: {fileID: 1612336315}
   m_Layer: 0
   m_Name: Vegetation
   m_TagString: Untagged
@@ -34708,6 +34711,28 @@ Transform:
   - {fileID: 1634773915}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1612336315
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1612336313}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 875d6e8cf97011146b2f0c9ce69d913b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BushSwayField
+  radius: 2.4
+  refreshSourceInterval: 2
+  yTolerance: 1.5
+  maxAmplitude: 16
+  frequency: 8
+  riseSpeed: 12
+  dampSpeed: 3.2
+  fullSpeedReference: 3
+  playerName: Player
+  enemyKeyword: Enemy
 --- !u!1 &1613005996
 GameObject:
   m_ObjectHideFlags: 0
