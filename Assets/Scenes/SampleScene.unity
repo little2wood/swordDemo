@@ -23029,7 +23029,7 @@ MonoBehaviour:
   contactOverlap: 0.08
   faceTargetOnRiposte: 1
   punchZoom: 1.2
-  riposteDamage: 34
+  riposteDamage: 10
 --- !u!114 &1076808064
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -34876,16 +34876,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 875d6e8cf97011146b2f0c9ce69d913b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BushSwayField
-  radius: 2.4
+  radius: 1.5
   refreshSourceInterval: 2
-  yTolerance: 1.5
-  maxAmplitude: 16
-  frequency: 8
-  riseSpeed: 12
-  dampSpeed: 3.2
+  maxAmplitude: 20
+  frequency: 4.5
+  dampSpeed: 1.2
   fullSpeedReference: 3
   playerName: Player
   enemyKeyword: Enemy
+  triggerCount: 0
 --- !u!1 &1613005996
 GameObject:
   m_ObjectHideFlags: 0

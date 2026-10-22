@@ -2,27 +2,29 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 灌木交互摆动：玩家/敌人走到灌木附近时，灌木朝角色移动方向倾倒并左右回弹，离开后自动回正。
-/// 挂在植被父物体上（默认收集所有直接子物体），不依赖物理碰撞，纯距离检测，开销极低。
-/// 摆动只作用于 Transform 旋转（绕根部），因此不改动材质、不影响批处理之外的渲染。
+/// 灌木交互摆动：玩家/敌人"进入"灌木范围时触发一次冲量式摆动，
+/// 灌木朝角色移动方向倒下并正弦振荡衰减回正；停留在其中或离开时不再重复触发。
+/// 挂在植被父物体上（默认收集所有直接子物体），纯距离检测，不加碰撞体，开销极低。
+/// 摆动轴在触发瞬间确定，且以世界轴左乘应用到 Transform，因此不受灌木自身随机 Y 旋转影响。
 /// </summary>
 public class BushSwayField : MonoBehaviour
 {
     [Header("检测")]
-    public float radius = 2.4f;                 // 触发半径（米）
+    public float radius = 3.2f;                 // 触发半径（米，水平距离）
     public float refreshSourceInterval = 2f;    // 重新扫描触发源（玩家/敌人）的间隔（秒）
-    [Range(0.1f, 3f)] public float yTolerance = 1.5f;   // 触发源与灌木的高度差容差，避免山坡上误触发
 
     [Header("摆动")]
-    public float maxAmplitude = 16f;            // 最大摆角（度）
-    public float frequency = 8f;                // 摆动频率（Hz 级，越大抖得越快）
-    public float riseSpeed = 12f;               // 接触时振幅上升速度
-    public float dampSpeed = 3.2f;              // 离开后回正速度
-    public float fullSpeedReference = 3f;       // 达到满振幅所需的移动速度（m/s）；静止时仍有 35% 基础摆动
+    public float maxAmplitude = 20f;            // 触发时的初始摆角（度）
+    public float frequency = 4.5f;              // 摆动频率（越大抖得越快）
+    public float dampSpeed = 1.2f;              // 摆动衰减速度（越小晃得越久）
+    public float fullSpeedReference = 3f;       // 达到满幅所需的移动速度（m/s）；静止时仍有 35% 基础摆动
 
     [Header("触发源")]
     public string playerName = "Player";        // 玩家对象名
     public string enemyKeyword = "Enemy";       // 敌人对象名关键字
+
+    [Header("调试")]
+    public int triggerCount;                    // 累计触发次数（只读参考，确认是否命中）
 
     private class Bush
     {
@@ -31,8 +33,9 @@ public class BushSwayField : MonoBehaviour
         public Vector3 pos;
         public float phase;
         public float amp;
-        public float targetAmp;
         public Vector3 axis;
+        public float freqMul;       // 每丛频率微扰，避免整片同步摆动
+        public bool wasInside;      // 上一帧是否已有触发源在范围内（用于只在"进入"时触发）
     }
 
     private class Source
@@ -66,7 +69,9 @@ public class BushSwayField : MonoBehaviour
                 baseRot = child.rotation,
                 pos = child.position,
                 phase = Random.Range(0f, Mathf.PI * 2f),
-                axis = Vector3.right
+                axis = Vector3.right,
+                freqMul = Random.Range(0.85f, 1.15f),
+                wasInside = false
             });
         }
     }
@@ -126,7 +131,8 @@ public class BushSwayField : MonoBehaviour
             Bush b = bushes[i];
             if (b.t == null) continue;
 
-            float target = 0f;
+            bool inside = false;
+            float peak = 0f;
             Vector3 pushDir = Vector3.zero;
 
             for (int k = 0; k < sources.Count; k++)
@@ -135,45 +141,46 @@ public class BushSwayField : MonoBehaviour
                 if (s.t == null) continue;
 
                 Vector3 d = b.pos - s.t.position;
-                if (Mathf.Abs(d.y) > yTolerance) continue;
-                d.y = 0f;
+                d.y = 0f;   // 只按水平距离判定，坡上坡下同样触发
                 float dist2 = d.sqrMagnitude;
                 if (dist2 > r2) continue;
 
-                float dist = Mathf.Sqrt(dist2);
-                float falloff = 1f - Mathf.Clamp01(dist / radius);
+                inside = true;
                 float speedFactor = Mathf.Clamp01(s.velocity.magnitude / Mathf.Max(0.01f, fullSpeedReference));
-                float amp = maxAmplitude * falloff * (0.35f + 0.65f * speedFactor);
-                if (amp <= target) continue;
+                // 摆幅与进入位置无关：触发点在跨进边界的瞬间，若按距离衰减会得到接近 0° 的不可见摆动
+                float amp = maxAmplitude * (0.45f + 0.55f * speedFactor);
+                if (amp <= peak) continue;
 
-                target = amp;
+                peak = amp;
                 Vector3 moveDir = s.velocity;
                 moveDir.y = 0f;
                 // 角色在动：沿移动方向倒；角色静止：被挤向远离角色的一侧
                 pushDir = moveDir.sqrMagnitude > 0.25f ? moveDir.normalized : -d.normalized;
             }
 
-            if (target > 0.01f)
+            // 只在"进入"的那一帧给一次冲量
+            if (inside && !b.wasInside && peak > 0.01f)
             {
-                b.targetAmp = target;
+                b.amp = peak;
+                b.phase = 0f;                   // 相位从 0 起步：摆角从原位平滑增长，第一下自然摆向移动方向（原 π/2 会让首帧瞬移到满幅）
                 Vector3 axis = Vector3.Cross(Vector3.up, pushDir);
                 if (axis.sqrMagnitude > 0.0001f) b.axis = axis.normalized;
+                triggerCount++;
             }
-            else
-            {
-                b.targetAmp = 0f;
-            }
+            b.wasInside = inside;
 
-            float k2 = b.targetAmp > b.amp ? riseSpeed : dampSpeed;
-            b.amp = Mathf.Lerp(b.amp, b.targetAmp, 1f - Mathf.Exp(-k2 * dt));
-            b.phase += dt * frequency;
+            if (b.amp <= 0f) continue;
+
+            b.amp = Mathf.Lerp(b.amp, 0f, 1f - Mathf.Exp(-dampSpeed * dt));
+            b.phase += dt * frequency * b.freqMul;
 
             if (b.amp > 0.03f)
             {
                 float angle = b.amp * Mathf.Sin(b.phase);
-                b.t.rotation = b.baseRot * Quaternion.AngleAxis(angle, b.axis);
+                // 世界轴左乘：摆动方向不受灌木自身随机 Y 旋转影响
+                b.t.rotation = Quaternion.AngleAxis(angle, b.axis) * b.baseRot;
             }
-            else if (b.amp > 0f)
+            else
             {
                 b.amp = 0f;
                 b.t.rotation = b.baseRot;
