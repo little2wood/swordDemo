@@ -12331,7 +12331,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!23 &577393103
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -22560,6 +22560,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1076808063}
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1076808064}
     - targetCorrespondingSourceObject: {fileID: -5375008215205933317, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1865327341}
@@ -23027,6 +23030,25 @@ MonoBehaviour:
   faceTargetOnRiposte: 1
   punchZoom: 1.2
   riposteDamage: 34
+--- !u!114 &1076808064
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1076808049}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8e215f5b4e25604a932a4ba1a3a559d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BladeCollider
+  controller: {fileID: 1076808056}
+  bladeBase: {fileID: 1096821195}
+  bladeTip: {fileID: 561184061}
+  tipLength: 0.25
+  bladeRadius: 0.05
+  layerName: Blade
+  ccdMode: 1
 --- !u!1 &1076958160
 GameObject:
   m_ObjectHideFlags: 0
@@ -29114,7 +29136,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!23 &1382697644
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -41945,7 +41967,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!23 &1953958868
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -44496,7 +44518,7 @@ Rigidbody:
   m_IsKinematic: 0
   m_Interpolate: 0
   m_Constraints: 0
-  m_CollisionDetection: 0
+  m_CollisionDetection: 2
 --- !u!23 &2071063143
 MeshRenderer:
   m_ObjectHideFlags: 0

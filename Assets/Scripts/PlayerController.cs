@@ -476,7 +476,10 @@ public class PlayerController : MonoBehaviour
     {
         if (PropImpulse.IsProp(col.gameObject, propLayer))
         {
-            PropImpulse.Apply(col.attachedRigidbody, tipVel, bladeMass, maxSwingSpeed, point, hitPropsThisSwing);
+            // 箱子的击飞交给 BladeCollider 的真实物理碰撞（碰撞矩阵里 Blade 层只与 Prop 碰），
+            // 这里只登记一下，保持"一次挥砍对每个物体只处理一次"的语义，避免逐帧重复。
+            // （想改回冲量模型就换成 PropImpulse.Apply(...) 并禁用 BladeCollider）
+            if (col.attachedRigidbody != null) hitPropsThisSwing.Add(col.attachedRigidbody);
             return;
         }
 
