@@ -346,6 +346,20 @@ public class PlayerController : MonoBehaviour
     }
 
     /// <summary>
+    /// 是否处在挥砍的<b>有效窗口</b>内：只认 A/B/C，且动画进度落在各自的 windowX 区间内。
+    /// 与下面 SweepHit 的命中判定共用同一套窗口定义，因此表现层（剑拖尾）
+    /// 与命中判定的开关时机完全一致——前摇和收势都不算在"挥砍中"。
+    /// </summary>
+    public bool IsSwingWindow()
+    {
+        var st = anim.GetCurrentAnimatorStateInfo(0);
+        int h = st.shortNameHash;
+        if (h != AH && h != BH && h != CH) return false;
+        Vector2 w = h == AH ? windowA : h == BH ? windowB : windowC;
+        return st.normalizedTime >= w.x && st.normalizedTime <= w.y;
+    }
+
+    /// <summary>
     /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测剑尖段胶囊（轴=剑尖段内端→剑尖，半径=bladeRadius）——
     /// ① 刃线（当前帧剑尖段是否压在敌人身上）；② 扫掠线（上一帧剑尖段沿挥扫方向扫过帧间距，防高速穿透漏检）。
     /// 只算剑尖这一段：判定体积贴近剑尖真实轨迹，命中时机与旧版零宽线一致，受击方向不会被"挥砍起势的前推分量"带偏。
