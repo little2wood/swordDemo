@@ -13,7 +13,7 @@ public class GuardBar : MonoBehaviour
 
     [Header("屏幕空间（HUD）")]
     public Vector2 screenPos = new Vector2(24f, 24f);
-    public Vector2 screenSize = new Vector2(320f, 22f);
+    public Vector2 screenSize = new Vector2(320f, 26f);   // 高度与血条 HealthBar.screenSize.y 保持一致
 
     [Header("外观")]
     public Color fillColor = new Color(1f, 0.55f, 0.1f, 1f);      // 橙

@@ -22943,7 +22943,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GuardBar
   guard: {fileID: 1076808062}
   screenPos: {x: 24, y: 24}
-  screenSize: {x: 320, y: 22}
+  screenSize: {x: 320, y: 26}
   fillColor: {r: 1, g: 0.55, b: 0.1, a: 1}
   backColor: {r: 0, g: 0, b: 0, a: 0.65}
   breakColor: {r: 0.5, g: 0.22, b: 0.05, a: 1}
