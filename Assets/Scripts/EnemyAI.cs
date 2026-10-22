@@ -39,9 +39,9 @@ public class EnemyAI : MonoBehaviour
 
     [Header("弹反")]
     [Tooltip("可弹反窗口的起点（动画进度）：前摇（抬手）结束、爪子开始挥出的那一瞬。\nZombie_Scratch 实测：手掌速度峰值在 0.30~0.34，0.26 之前是抬手")]
-    [Range(0f, 1f)] public float parryWindowStart = 0.27f;
-    [Tooltip("可弹反窗口的终点（动画进度）：挥击段结束、进入收势（后摇）之前。实测 0.38 之后手掌基本停住")]
-    [Range(0f, 1f)] public float parryWindowEnd = 0.40f;
+    [Range(0f, 1f)] public float parryWindowStart = 0.22f;
+    [Tooltip("可弹反窗口的终点（动画进度）：刻意放宽到挥击段之后 —— 真正的终点是\"爪子打到主角\"那一瞬，\n由 playerHitDone 在命中时自动切断（见 IsInParryWindow），命中之后按防御一律不算弹反。\n实测 1.2m 距离下命中在第 18.5 帧(0.343)，所以有效窗口 ≈ 第 12~18.5 帧")]
+    [Range(0f, 1f)] public float parryWindowEnd = 0.45f;
 
     Rigidbody rb;
     Animator anim;
@@ -79,6 +79,10 @@ public class EnemyAI : MonoBehaviour
     public bool IsInParryWindow()
     {
         if (stagger != null && stagger.IsLocked) return false;
+        // 这一击已经打到主角、伤害也结算了 —— 挨完打再按防御不算弹反（弹反只能在挨打之前）。
+        // playerHitDone 由 SweepHands 的结算置位，非攻击状态/被弹反时自动复位，下一击重新可弹反。
+        if (playerHitDone) return false;
+
         var st = anim.GetCurrentAnimatorStateInfo(0);
         if (st.shortNameHash != AttackStateH) return false;
         float t = st.normalizedTime;
@@ -130,6 +134,7 @@ public class EnemyAI : MonoBehaviour
             if (Time.time >= nextAttackTime)
             {
                 anim.SetTrigger(AttackId);
+                playerHitDone = false;      // 新的一击起手：重新可弹反（不单靠 SweepHands 复位，防止动画直接 Attack→Attack 时把弹反锁死）
                 nextAttackTime = Time.time + attackInterval;
             }
         }
