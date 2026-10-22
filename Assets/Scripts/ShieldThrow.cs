@@ -121,6 +121,9 @@ public class ShieldThrow : MonoBehaviour
     readonly Collider[] sweepBuf = new Collider[32];
     Vector3 prevReturnPos;  // 上一帧的召回位置（扫掠段起点）
 
+    /// 召回扫掠命中的目标类型：敌人（结算伤害） / 石头（只中断召回）
+    enum SweepTarget { None, Enemy, Stone }
+
     /// 飞行途中第一次撞到外部物体时触发（供相机提前结束"投掷观察期"等外部逻辑使用）
     public event System.Action FlightFirstHit;
 
@@ -377,10 +380,16 @@ public class ShieldThrow : MonoBehaviour
         float arc = recoverArc * Mathf.Sin(k * Mathf.PI);
         transform.position = flat + Vector3.up * arc;
 
-        // 路径扫掠：上一位置→当前位置的胶囊段压到敌人就算撞上（帧率无关，不依赖物理消息）
-        if (SweepHitEnemy(out Collider hitCol))
+        // 路径扫掠：上一位置→当前位置的胶囊段压到敌人/石头就算撞上（帧率无关，不依赖物理消息）
+        var sweepTarget = SweepHitReturn(out Collider hitCol);
+        if (sweepTarget == SweepTarget.Enemy)
         {
             BreakReturnBySweep(hitCol);
+            return;
+        }
+        if (sweepTarget == SweepTarget.Stone)
+        {
+            BreakReturnByStone();
             return;
         }
         prevReturnPos = transform.position;
@@ -423,14 +432,16 @@ public class ShieldThrow : MonoBehaviour
         if (Current != State.Flying && Current != State.Returning) return;
         if (IsSelfCollider(collision.collider)) return;   // 保险：IgnoreCollision 已挡住自己人，这里再筛一次
 
-        // ---- 召回途中：撞到敌人 → 结算伤害并中断召回；撞到别的（箱子等）维持现状 ----
+        // ---- 召回途中：撞到敌人 → 结算伤害并中断召回；撞到石头 → 只中断召回；撞到别的（箱子等）维持现状 ----
         // 召回的盾是 kinematic 且逐帧瞬移，物理消息发不发并不可靠（会隧穿漏检），
-        // 真正兜底的是 Update 里的路径扫掠 SweepHitEnemy —— 这里收到消息就提前精确结算一次。
+        // 真正兜底的是 Update 里的路径扫掠 SweepHitReturn —— 这里收到消息就提前精确结算一次。
         if (Current == State.Returning)
         {
             var hpBack = collision.collider.GetComponentInParent<Health>();
             if (hpBack != null && !hpBack.IsDead && hpBack.team == Health.Team.Enemy)
                 BreakReturn(collision);
+            else if (collision.collider.GetComponentInParent<StoneBlock>() != null)
+                BreakReturnByStone();
             return;
         }
 
@@ -462,6 +473,31 @@ public class ShieldThrow : MonoBehaviour
     }
 
     /// <summary>
+    /// 召回途中撞到石头：只中断召回、盾被弹开落地 —— 无伤害结算、无火星、无弹刀动画。
+    /// 刻意不走 BreakReturnCore：那条路会调 SettleHit，其中石头分支会触发剑的弹刀。
+    /// 转 dynamic 后按召回瞬时速度交给物理，被静态石头挡住自然弹开；
+    /// 切回 Flying 复用现有的"重力 + 减速 → 停下冻结(Loose)"流程，玩家可随时再按右键召回。
+    /// 开头的状态检查兼任防重入（物理消息与扫掠可能同帧都命中，只处理一次）。
+    /// </summary>
+    void BreakReturnByStone()
+    {
+        if (Current != State.Returning) return;
+
+        // 召回弧线的瞬时速度当作中断后的初速度
+        Vector3 v = ReturnVelocity();
+        lastVel = v;
+
+        // 本次飞行不是主动投掷命中，落地时不再拉"投掷观察期"
+        fromBreak = true;
+
+        rb.isKinematic = false;
+        rb.linearVelocity = v;
+        Vector3 axis = transform.TransformDirection(DetectSpinAxisLocal());   // 延续出手的盘式自旋
+        rb.angularVelocity = (axis.sqrMagnitude > 1e-6f ? axis.normalized : Vector3.up) * spinRate;
+        Current = State.Flying;
+    }
+
+    /// <summary>
     /// 召回中断核心：结算伤害并中断召回。
     /// 伤害走 SettleHit 的敌人分支（扣血 → Health.OnDamaged → HitReaction 自动播放受击摆动），
     /// 冲量/方向用召回弧线在当前进度的瞬时速度 —— 与投掷命中同一把标尺。
@@ -489,13 +525,13 @@ public class ShieldThrow : MonoBehaviour
 
     /// <summary>
     /// 召回路径扫掠：上一帧位置→当前位置的胶囊段（半径 0.3m ≈ 盾半径+余量）
-    /// 压到敌人的任何碰撞体（躯干胶囊或骨骼部件）都算命中。
+    /// 压到敌人的任何碰撞体（躯干胶囊或骨骼部件）都算命中；压到石头（StoneBlock）同样算命中。
     /// 顺带把物理消息覆盖不到的"擦手臂"命中也兜住了。
     /// </summary>
-    bool SweepHitEnemy(out Collider hitCol)
+    SweepTarget SweepHitReturn(out Collider hitCol)
     {
         hitCol = null;
-        if ((transform.position - prevReturnPos).sqrMagnitude < 1e-8f) return false;
+        if ((transform.position - prevReturnPos).sqrMagnitude < 1e-8f) return SweepTarget.None;
 
         int n = Physics.OverlapCapsuleNonAlloc(prevReturnPos, transform.position, 0.3f,
                                                sweepBuf, ~0, QueryTriggerInteraction.Ignore);
@@ -505,11 +541,18 @@ public class ShieldThrow : MonoBehaviour
             if (c == null || c == col) continue;
             if (IsSelfCollider(c)) continue;
             var hp = c.GetComponentInParent<Health>();
-            if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) continue;
-            hitCol = c;
-            return true;
+            if (hp != null && !hp.IsDead && hp.team == Health.Team.Enemy)
+            {
+                hitCol = c;
+                return SweepTarget.Enemy;
+            }
+            if (c.GetComponentInParent<StoneBlock>() != null)
+            {
+                hitCol = c;
+                return SweepTarget.Stone;
+            }
         }
-        return false;
+        return SweepTarget.None;
     }
 
     /// 召回弧线在当前进度的瞬时速度（位置对时间求导）：直线段分量 + 正弦拱起的竖直分量
