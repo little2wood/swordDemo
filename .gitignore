@@ -41,3 +41,6 @@ Desktop.ini
 # 截图输出目录（MCP 调试截图，不入库）
 Assets/Screenshots/
 Assets/Screenshots.meta
+
+# 打包输出目录（Windows 可执行包，不入库）
+sworddemorun/
