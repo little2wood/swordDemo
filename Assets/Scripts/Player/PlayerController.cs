@@ -70,6 +70,7 @@ public class PlayerController : MonoBehaviour
     Animator anim;
     PlayerInput input;
     Camera cam;
+    bool parryHoldPrev;         // 上一物理帧的弹反定身状态：用于识别"解锁帧"（快切跑步用）
 
     bool throwPending;      // 已起手投掷动画，等动画走到出手点
     float throwPendingTime;
@@ -272,6 +273,8 @@ public class PlayerController : MonoBehaviour
 
         bool stunned = IsStunned();     // 破防硬直：禁止一切操作（移动/转向/攻击/投掷/举盾/召回）
         bool parryHold = parry != null && parry.IsHolding;   // 弹反定身：不能移动/转向/投掷/召回，但左键可以打反击
+        bool parryJustReleased = parryHoldPrev && !parryHold;   // 定身解锁帧（本帧状态写入 parryHoldPrev 供下帧比较）
+        parryHoldPrev = parryHold;
         bool stoneBlocking = stoneReaction != null && stoneReaction.IsBlocking;   // 砍到石头：同上禁一切，唯独镜头不归它管
 
         Vector2 mv = input.MoveInput;
@@ -362,6 +365,17 @@ public class PlayerController : MonoBehaviour
             float w = anim.GetLayerWeight(guardLayerIdx);
             if (!Mathf.Approximately(w, guardTarget))
                 anim.SetLayerWeight(guardLayerIdx, Mathf.MoveTowards(w, guardTarget, Time.fixedDeltaTime * guardWeightSpeed));
+        }
+
+        // ---- 弹反定身解锁帧：方向键已按死时直接硬切入跑步（Play，无混合）----
+        //      走常规 Idle→Jog 要 0.15s 过渡，位移已恢复、腿还混在站立姿势 —— 纯滑步段；
+        //      必须用 Play 而非 CrossFade：同帧 SetBool(Moving) 会先触发 Idle→Jog 的常规过渡
+        //      （0.15s 且不可中断），CrossFade 会被它盖过；Play 直接改当前状态，无竞争。
+        //      举盾权重也立即归零（正常是平滑回落），上半身残影一并消掉
+        if (parryJustReleased && hasMove)
+        {
+            anim.Play(JogH, 0, 0f);
+            if (guardLayerIdx >= 0) anim.SetLayerWeight(guardLayerIdx, 0f);
         }
 
         // ---- 攻击输入：从缓冲消费点击；只有站立时才起手/续击，移动中直接丢弃（不缓存、不排队）----
