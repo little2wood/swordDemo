@@ -4,7 +4,6 @@
 
 - 引擎：Unity 6000.3.10f1（URP）
 - 输入：Input System 包（键鼠）
-- 角色控制：Rigidbody（不使用 CharacterController、不使用 root motion）
 
 ## 玩法
 
