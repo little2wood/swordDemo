@@ -60,11 +60,17 @@ public class CapeCloth : MonoBehaviour
     [Header("身体碰撞推离（防穿模：披风穿过躯干/大腿）")]
     [Tooltip("关闭后回到纯布料（会穿模）")]
     public bool bodyCollision = true;
-    [Tooltip("各推离球半径（m）：球挂在对应骨骼上跟着动画走，粒子被推到球面外")]
-    public float torsoRadius = 0.12f;   // spine_03（上胸）：半径贴着躯干半厚，太大披风会飘离后背
-    public float hipRadius = 0.13f;     // pelvis（骨盆）
-    public float headRadius = 0.11f;    // Head（低头/受击时防穿）
-    public float thighRadius = 0.08f;   // thigh_l / thigh_r（大腿：跑动时防披风穿腿）
+    [Tooltip("胸腔/骨盆胶囊段半径（m）：胶囊沿相邻骨骼布置、覆盖躯干实际轮廓，比单球更贴背，转身时侧缘不容易从球缝漏进身体")]
+    public float torsoRadius = 0.12f;   // 胸腔胶囊 spine_02 → neck_01：半径贴着躯干半厚，太大披风会飘离后背
+    public float hipRadius = 0.13f;     // 骨盆胶囊 spine_01 → pelvis
+    [Tooltip("头部球半径（m）：低头/受击时防穿")]
+    public float headRadius = 0.11f;    // Head
+    [Tooltip("大腿球半径（m）：跑动时防披风穿腿")]
+    public float thighRadius = 0.08f;   // thigh_l / thigh_r
+    [Tooltip("肩部球半径（m）：披风两侧从肩尖外侧垂下，转身甩摆时防侧缘穿肩")]
+    public float shoulderRadius = 0.07f; // upperarm_l / upperarm_r
+    [Tooltip("碰撞安全间距（m）：粒子被推到碰撞面外后多留这点距离 —— 粒子不穿不代表三角面不穿（面横跨两粒子），留出皮肤间距防可见网格贴面穿透")]
+    public float collisionSkin = 0.015f;
 
     [Header("外观（renderer 无材质时自动按此建运行时材质）")]
     [Tooltip("是否生成并渲染自带的程序化梯形网格。\n作为隐形物理骨架（撕裂披风等蒙皮代理的粒子宿主）时应关闭：\n关闭后只跑粒子模拟，不建网格、不接管 MeshFilter/MeshRenderer，避免覆盖同物体上的美术网格")]
@@ -79,6 +85,7 @@ public class CapeCloth : MonoBehaviour
     Vector3[] anchorLocals;     // 顶行粒子相对锚骨的本地偏移
     Constraint[] cons;          // 距离约束（结构 + 对角剪切）
     struct Constraint { public int a, b; public float rest; }
+    struct ColSeg { public Transform a, b; public float r; }    // 碰撞段：胶囊 a→b（b=null 退化为单球）
     Mesh mesh;
     int halfCount;              // cols*rows
     int vertCount;              // 双面顶点 = half*2
@@ -86,9 +93,10 @@ public class CapeCloth : MonoBehaviour
     float time;                 // 风场累计时间
     Vector3 lastAnchorPos;      // 上一帧锚点世界位置：算锚点速度（相对风的来源）
     bool anchorInit;
-    Transform[] colBones;       // 身体碰撞球挂的骨骼
+    Transform[] colA;           // 身体碰撞段：起点骨骼（球=唯一骨骼）
+    Transform[] colB;           // 碰撞段终点骨骼；null = 单球
     
-    float[] colRadii;           // 与 colBones 一一对应的半径
+    float[] colRadii;           // 与 colA 一一对应的半径
     Transform[] cornerBones;    // 顶行角点锚骨（upperarm_l/r，index 0=首列 1=末列；null 项回退 spine）
     Vector3[] cornerLocals;     // 角点相对各自肩骨的本地偏移（绑定时按轮廓标定位置反算，保形）
     bool cornerAnchorsActive;   // 最近一次绑定时 cornersFollowShoulders 的取值
@@ -130,42 +138,62 @@ public class CapeCloth : MonoBehaviour
         return env - anchorVel * moveWindScale;
     }
 
-    /// 身体碰撞球：胸口/骨盆/头/大腿，挂在骨骼上跟着动画走（缺哪根骨就跳过哪个球）
+    /// 身体碰撞体：胸腔/骨盆用沿相邻骨骼布置的胶囊段覆盖背部实际轮廓（单球转身时容易从球缝漏进身体），
+    /// 头/大腿/肩用球；挂在骨骼上跟着动画走（缺主骨跳过该项，胶囊缺终点骨退化为单球）
     void BuildColliders()
     {
-        var root = transform.root != null ? transform.root : transform;
-        var bones = new System.Collections.Generic.List<Transform>();
-        var radii = new System.Collections.Generic.List<float>();
+        var segs = new System.Collections.Generic.List<ColSeg>();
+        AddSeg(segs, "spine_02", "neck_01", torsoRadius);       // 胸腔胶囊：沿脊柱覆盖上背到后颈下方
+        AddSeg(segs, "spine_01", "pelvis", hipRadius);          // 骨盆胶囊：覆盖腰臀（缺 spine_01 退化为 pelvis 单球）
+        AddSeg(segs, "Head", null, headRadius);
+        AddSeg(segs, "thigh_l", null, thighRadius);
+        AddSeg(segs, "thigh_r", null, thighRadius);
+        AddSeg(segs, "upperarm_l", null, shoulderRadius);       // 肩部补球：防转身甩摆时披风侧缘穿肩
+        AddSeg(segs, "upperarm_r", null, shoulderRadius);
 
-        Transform b;
-        b = FindDeep(root, "spine_03"); if (b != null) { bones.Add(b); radii.Add(torsoRadius); }
-        b = FindDeep(root, "pelvis");   if (b != null) { bones.Add(b); radii.Add(hipRadius); }
-        b = FindDeep(root, "Head");     if (b != null) { bones.Add(b); radii.Add(headRadius); }
-        b = FindDeep(root, "thigh_l");  if (b != null) { bones.Add(b); radii.Add(thighRadius); }
-        b = FindDeep(root, "thigh_r");  if (b != null) { bones.Add(b); radii.Add(thighRadius); }
-
-        colBones = bones.ToArray();
-        colRadii = radii.ToArray();
+        colA = new Transform[segs.Count];
+        colB = new Transform[segs.Count];
+        colRadii = new float[segs.Count];
+        for (int i = 0; i < segs.Count; i++) { colA[i] = segs[i].a; colB[i] = segs[i].b; colRadii[i] = segs[i].r; }
     }
 
-    /// 把非锚点粒子推出身体碰撞球（迭代内调用，与约束求解交替收敛，最后一轮保证不穿身体）
+    /// 按骨骼名添加碰撞段；找不到主骨则跳过（同老逻辑"缺哪根骨就跳过哪个球"）
+    void AddSeg(System.Collections.Generic.List<ColSeg> segs, string boneA, string boneB, float r)
+    {
+        var root = transform.root != null ? transform.root : transform;
+        Transform a = FindDeep(root, boneA);
+        if (a == null) return;
+        segs.Add(new ColSeg { a = a, b = boneB != null ? FindDeep(root, boneB) : null, r = r });
+    }
+
+    /// 把非锚点粒子推出身体碰撞段（迭代内调用，与约束求解交替收敛，最后一轮保证不穿身体）。
+    /// 推离是纯位置投影：必须同步修正 prevPos，否则这份位移会被 Verlet 当成速度，下一帧又把披风甩回身体里
     void PushOutOfBody()
     {
-        if (!bodyCollision || colBones == null) return;
-        for (int s = 0; s < colBones.Length; s++)
+        if (!bodyCollision || colA == null) return;
+        for (int s = 0; s < colA.Length; s++)
         {
-            if (colBones[s] == null) continue;
-            Vector3 c = colBones[s].position;
-            float r = colRadii[s];
+            if (colA[s] == null) continue;
+            Vector3 a = colA[s].position;
+            Vector3 ab = colB[s] != null ? colB[s].position - a : Vector3.zero;   // 胶囊轴；单球时 ab=0
+            float abSq = ab.sqrMagnitude;
+            float r = colRadii[s] + collisionSkin;      // 安全间距：粒子不穿 ≠ 三角面不穿
             float rSq = r * r;
             for (int i = cols; i < halfCount; i++)      // 顶行是锚点，不参与
             {
-                Vector3 d = pos[i] - c;
+                Vector3 d = pos[i] - a;
+                if (abSq > 1e-8f)                       // 点到胶囊轴线的最近点（钳在段内）
+                {
+                    float t = Mathf.Clamp(Vector3.Dot(d, ab) / abSq, 0f, 1f);
+                    d -= ab * t;
+                }
                 float dsq = d.sqrMagnitude;
                 if (dsq < rSq && dsq > 1e-8f)
                 {
                     float len = Mathf.Sqrt(dsq);
-                    pos[i] += d * ((r - len) / len);
+                    Vector3 corr = d * ((r - len) / len);
+                    pos[i] += corr;
+                    prevPos[i] += corr;
                 }
             }
         }
@@ -181,7 +209,11 @@ public class CapeCloth : MonoBehaviour
         {
             float along = Vector3.Dot(pos[i] - origin, fwd);
             if (along > frontLimit)
-                pos[i] -= fwd * (along - frontLimit);
+            {
+                Vector3 corr = fwd * (along - frontLimit);
+                pos[i] -= corr;         // 同步 prevPos：拉回是位置修正，不能被 Verlet 当成速度
+                prevPos[i] -= corr;
+            }
         }
     }
 
@@ -189,6 +221,7 @@ public class CapeCloth : MonoBehaviour
     void InitParticles()
     {
         int n = cols * rows;
+        halfCount = n;      // 隐形骨架模式（renderGridMesh=false）不跑 BuildMesh，这里也必须赋值，否则碰撞推离循环不生效
         pos = new Vector3[n];
         prevPos = new Vector3[n];
         restLocals = new Vector3[n];
