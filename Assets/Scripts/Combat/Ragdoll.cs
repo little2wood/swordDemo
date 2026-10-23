@@ -121,6 +121,8 @@ public class Ragdoll : MonoBehaviour
         if (pc != null) list.Add(pc);
         var ai = GetComponent<EnemyAI>();
         if (ai != null) list.Add(ai);
+        var st = GetComponent<EnemyStagger>();
+        if (st != null) list.Add(st);   // 弹反/平推期间死亡：stagger 仍在驱动根刚体，一并收权（否则对 kinematic 写速度会刷警告）
         controllers = list.ToArray();
 
         SetPartsKinematic(true);
@@ -184,9 +186,11 @@ public class Ragdoll : MonoBehaviour
         if (rootCollider != null) rootCollider.enabled = false;
         if (rootBody != null)
         {
+            // 先清速度再冻结：kinematic 之后写速度无效且会刷 Unity 警告（同 ShieldThrow.Freeze 的顺序）
+            rootBody.linearVelocity = Vector3.zero;
+            rootBody.angularVelocity = Vector3.zero;
             rootBody.isKinematic = true;
             rootBody.detectCollisions = false;
-            rootBody.linearVelocity = Vector3.zero;
         }
 
         // 3. 唤醒骨骼物理
