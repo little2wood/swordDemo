@@ -32018,7 +32018,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.135
+      value: 3.19
       objectReference: {fileID: 0}
     - target: {fileID: -8679921383154817045, guid: 66a407fe53821d3409e93e3457f87a6e, type: 3}
       propertyPath: m_LocalPosition.z
@@ -33426,6 +33426,7 @@ MonoBehaviour:
   animator: {fileID: 1076808053}
   parryRange: 3.5
   rangeTolerance: 0.15
+  parryArcDeg: 120
   holdTime: 3
   riposteTime: 1.1
   dashDistance: 3.5
