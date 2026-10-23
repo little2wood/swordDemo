@@ -9,6 +9,7 @@ using UnityEngine;
 /// 风场 = 环境微风（双正弦） + 锚点运动相对风：跑动后飘、原地转身甩摆、下落上飘都由锚点速度驱动
 /// （比只看刚体速度多了转向与动画起伏，且包含竖直分量）。
 /// </summary>
+[DefaultExecutionOrder(50)]    // 晚于 HitReaction.LateUpdate（默认 0）：受击摆动叠加完骨骼姿态，披风锚定才读到含摆动的最终姿态；早于 TornedCapeDriver(100)
 public class CapeCloth : MonoBehaviour
 {
     [Header("网格尺寸")]
