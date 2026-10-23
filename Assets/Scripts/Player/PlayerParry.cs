@@ -17,6 +17,8 @@ public class PlayerParry : MonoBehaviour
     public float parryRange = 3.5f;
     [Tooltip("真正的判定距离 = 敌人的攻击范围（EnemyAI.attackRange）+ 这点边界余量。\n站在这个范围外它的爪子根本够不到你，不允许弹反")]
     public float rangeTolerance = 0.15f;
+    [Tooltip("弹反有效的朝向范围（半角，deg）：攻击者必须落在角色正面这个扇区内才允许弹反，\n与格挡（PlayerGuard.blockArcDeg）同一口径 —— 默认 120 = 正面 ±120°，只有背后 ±60° 的攻击弹不了")]
+    public float parryArcDeg = 120f;
     [Tooltip("弹反成功后玩家被定住的现实时间（秒）：期间不能移动，只能按左键反击")]
     public float holdTime = 3f;
     [Tooltip("反击动画时长（Shield_Dash ≈ 1.1s）：期间同样锁住移动")]
@@ -98,6 +100,9 @@ public class PlayerParry : MonoBehaviour
             float d = flat.magnitude;
             if (d > parryRange || d >= bestD) continue;
 
+            // 朝向：攻击者必须在正面扇区内（与格挡同口径）—— 背后袭来的爪击不配被弹
+            if (!FacingEnemy(flat)) continue;
+
             // 必须在它这一击够得到的范围内：站得太远它打不到你，也就不该弹反
             if (d > ai.AttackRange + rangeTolerance) continue;
 
@@ -177,6 +182,16 @@ public class PlayerParry : MonoBehaviour
         dashVelocity = dist / dashDuration;
         dashTimer = 0f;
         dashing = true;
+    }
+
+    /// 攻击者是否在弹反扇区内：与格挡（PlayerGuard.FacingAttack）同一口径 ——
+    /// 攻击者方位（我 → 它）与角色正面的水平夹角 ≤ parryArcDeg；退化（垂直方向）时放行，同格挡
+    bool FacingEnemy(Vector3 toEnemy)
+    {
+        Vector3 f = transform.forward; f.y = 0f;
+        toEnemy.y = 0f;
+        if (f.sqrMagnitude < 1e-6f || toEnemy.sqrMagnitude < 1e-6f) return true;
+        return Vector3.Dot(f.normalized, toEnemy.normalized) >= Mathf.Cos(Mathf.Clamp(parryArcDeg, 0f, 180f) * Mathf.Deg2Rad);
     }
 
     /// 碰撞体的水平半径（胶囊/球/盒），没有碰撞体时按成年人身材兜底
