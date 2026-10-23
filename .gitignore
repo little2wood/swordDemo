@@ -44,4 +44,7 @@ Assets/Screenshots.meta
 
 # 打包输出目录（Windows 可执行包，不入库）
 sworddemorun/
+
+# Unity 云服务本机状态（打包/登录时反复变化，不入库）
+ProjectSettings/UnityConnectSettings.asset
 demoRun/
