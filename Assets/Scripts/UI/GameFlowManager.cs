@@ -55,7 +55,19 @@ public class GameFlowManager : MonoBehaviour
         Instance = this;
 
         var t = GameObject.Find(enemyTemplateName);
-        if (t != null) { t.SetActive(false); template = t; }
+        if (t != null)
+        {
+            // 模板在场景里是激活状态保存的（GameObject.Find 只找得到激活对象，不能预隐藏），
+            // 此时模板身上的 HealthBar.Awake 已经跑过、建了血条 Canvas —— 必须先清掉再隐藏，
+            // 否则 SpawnNext 的 Instantiate 会把旧 Canvas 一起复制，实例又建一个新的 → 敌人头顶双血条
+            for (int i = t.transform.childCount - 1; i >= 0; i--)
+            {
+                var ch = t.transform.GetChild(i);
+                if (ch.name == "HealthBar_World" || ch.name == "HealthBar_HUD") Destroy(ch.gameObject);
+            }
+            t.SetActive(false);
+            template = t;
+        }
         var p = GameObject.Find("Player");
         if (p != null) player = p.transform;
         camCtrl = FindObjectOfType<ThirdPersonCamera>();

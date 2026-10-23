@@ -63,6 +63,10 @@ public class HealthBar : MonoBehaviour
 
     void Build()
     {
+        // --- 防御：清掉同名的历史残留 Canvas（如被复制模板带来的旧血条），避免双血条 ---
+        var stale = transform.Find(mode == Mode.WorldSpace ? "HealthBar_World" : "HealthBar_HUD");
+        if (stale != null) Destroy(stale.gameObject);
+
         // --- Canvas 根节点 ---
         var go = new GameObject(mode == Mode.WorldSpace ? "HealthBar_World" : "HealthBar_HUD");
         canvas = go.AddComponent<Canvas>();
