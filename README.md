@@ -142,3 +142,4 @@ Assets/Scripts/
 
 1. Unity Hub 安装 **6000.3.10f1**（或兼容的 Unity 6 版本），打开本项目；
 2. 打开 `Assets/Scenes/SampleScene`，点 Play；
+3. 游戏胜利条件，连续击败5个敌人
