@@ -191,6 +191,10 @@ public class GameFlowManager : MonoBehaviour
         current = Instantiate(template, pos, Quaternion.Euler(0f, Random.Range(0f, 360f), 0f));
         current.name = enemyTemplateName;
         current.SetActive(true);
+
+        // 出生点在感知范围外（16m > 12m），必须显式警觉，敌人起步直追而不是原地待机
+        var ai = current.GetComponent<EnemyAI>();
+        if (ai != null) ai.Alert();
     }
 
     void StartGame()

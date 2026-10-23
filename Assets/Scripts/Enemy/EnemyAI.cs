@@ -48,6 +48,8 @@ public class EnemyAI : MonoBehaviour
     EnemyStagger stagger;
 
     float nextAttackTime;
+    bool spawnChase;    // 出生直追：生成点在 spawnDistance(16m) > detectRange(12m)，出生时在感知圈外，
+                        // 没有它敌人会在原地永远待机 —— 出生时知道主角位置，追进感知圈后交还正常感知（跑远可甩开）
     Vector3 prevHandL, prevHandR;   // 上一渲染帧两手掌位置（扫掠起点）
     bool sweepInit;                 // 扫掠起点是否已采样
     bool playerHitDone;             // 本次挥爪是否已结算（对玩家只结算一次）
@@ -91,6 +93,15 @@ public class EnemyAI : MonoBehaviour
 
     /// <summary>这一击够得到目标的距离上限（弹反判定用）：超出这个距离，它的爪子打不到你，也就不该弹反。</summary>
     public float AttackRange { get { return attackRange; } }
+
+    /// <summary>
+    /// 出生警觉：由刷怪方在 Instantiate 后调用。敌人出生在感知范围外（spawnDistance 16m &gt; detectRange 12m），
+    /// 不调用它敌人会在原地永远待机 —— 调用后敌人直追主角，追进感知圈后交还正常感知。
+    /// </summary>
+    public void Alert()
+    {
+        spawnChase = true;
+    }
 
     void Update()
     {
@@ -138,9 +149,10 @@ public class EnemyAI : MonoBehaviour
                 nextAttackTime = Time.time + attackInterval;
             }
         }
-        else if (dist <= detectRange)
+        else if (dist <= detectRange || spawnChase)
         {
-            // 发现玩家：边转向边追
+            // 发现玩家：边转向边追。（spawnChase = 出生直追，追进感知圈后交还正常感知）
+            if (dist <= detectRange) spawnChase = false;
             FaceTo(toTarget);
             Move(toTarget.normalized);
             anim.SetBool(MovingId, true);
