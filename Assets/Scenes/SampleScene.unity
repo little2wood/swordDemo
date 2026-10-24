@@ -33409,7 +33409,7 @@ MonoBehaviour:
   blockArcDeg: 120
   guardCostPerDamage: 5
   minGuardCost: 1
-  requireShieldInHand: 0
+  requireShieldInHand: 1
   breakStunTime: 1.067
 --- !u!114 &1076808063
 MonoBehaviour:
