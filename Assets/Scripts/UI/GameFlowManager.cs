@@ -70,7 +70,7 @@ public class GameFlowManager : MonoBehaviour
         }
         var p = GameObject.Find("Player");
         if (p != null) player = p.transform;
-        camCtrl = FindObjectOfType<ThirdPersonCamera>();
+        camCtrl = Object.FindFirstObjectByType<ThirdPersonCamera>();
 
         if (startDirectly)
         {

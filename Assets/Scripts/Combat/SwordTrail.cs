@@ -67,7 +67,7 @@ public class SwordTrail : MonoBehaviour
         if (initialized) return;
         initialized = true;
 
-        if (controller == null) controller = FindObjectOfType<PlayerController>();
+        if (controller == null) controller = Object.FindFirstObjectByType<PlayerController>();
 
         filter = GetComponent<MeshFilter>();
         rend = GetComponent<MeshRenderer>();

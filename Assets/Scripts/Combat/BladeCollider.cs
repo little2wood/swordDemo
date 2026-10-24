@@ -40,7 +40,7 @@ public class BladeCollider : MonoBehaviour
 
     void Awake()
     {
-        if (controller == null) controller = FindObjectOfType<PlayerController>();
+        if (controller == null) controller = Object.FindFirstObjectByType<PlayerController>();
         Build();
     }
 

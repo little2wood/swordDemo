@@ -53,8 +53,6 @@ public class GuardBar : MonoBehaviour
         canvas.transform.SetParent(null, false);
         DontDestroyOnLoad(go);
 
-        float pxW = 200f, pxH = 20f;
-
         // --- 条容器：背景/前景只相对它拉伸，否则屏幕空间会铺满整屏 ---
         var rootGo = new GameObject("Bar");
         rootGo.transform.SetParent(canvas.transform, false);

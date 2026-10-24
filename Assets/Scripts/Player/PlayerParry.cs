@@ -85,7 +85,7 @@ public class PlayerParry : MonoBehaviour
         EnemyStagger best = null;
         float bestD = float.MaxValue;
 
-        var list = Object.FindObjectsOfType<EnemyAI>();
+        var list = Object.FindObjectsByType<EnemyAI>(FindObjectsSortMode.None);
         for (int i = 0; i < list.Length; i++)
         {
             var ai = list[i];
