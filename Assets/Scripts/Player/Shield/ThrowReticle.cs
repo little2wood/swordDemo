@@ -110,13 +110,20 @@ public class ThrowReticle : MonoBehaviour
         Vector3 aim = shield.AimDirection();
         Vector3 pos = shield.AimStartPoint();
         Vector3 v = aim * shield.throwSpeed;
-        float dt = 1f / 60f;                        // 与 ShieldThrow.FixedUpdate 的积分保持一致
+        float dt = Time.fixedDeltaTime;             // 与 ShieldThrow.FixedUpdate 用同一个物理步长（同源，项目改步长也自动一致）
         float travelled = 0f;
         bool hitted = false;
         Vector3 hitPoint = Vector3.zero, hitNormal = Vector3.up;
 
         while (travelled < maxRange)
         {
+            // 与真实飞行逐步相同：每个物理步先跑 FixedUpdate（加重力/阻尼/限速），
+            // 物理引擎随后用改好的速度积分位移 —— 所以预测必须"先加速、后位移"（半隐式欧拉），
+            // 顺序反了会让预测轨迹系统性偏高（重力每步晚一步生效）
+            v += Physics.gravity * shield.gravityScale * dt;
+            v *= 1f / (1f + shield.flightDrag * dt);
+            v = Vector3.ClampMagnitude(v, shield.maxSpeed);
+
             Vector3 next = pos + v * dt;
             float segLen = Vector3.Distance(pos, next);
 
@@ -131,11 +138,6 @@ public class ThrowReticle : MonoBehaviour
 
             travelled += segLen;
             pos = next;
-
-            // 与飞行完全相同的力学：自定义重力 + 线性阻尼 + 限速
-            v += Physics.gravity * shield.gravityScale * dt;
-            v *= 1f / (1f + shield.flightDrag * dt);
-            v = Vector3.ClampMagnitude(v, shield.maxSpeed);
         }
 
         if (!hitted)
@@ -147,7 +149,7 @@ public class ThrowReticle : MonoBehaviour
         DrawRing(hitPoint, hitNormal, hitColor);
     }
 
-    /// 一小段射线path Several：命中的是主角自身就跳过继续往前找
+    /// 一小段射线：命中的是主角自身就跳过继续往前找
     bool CastSegment(Vector3 a, Vector3 b, out RaycastHit result)
     {
         Vector3 dir = b - a;
