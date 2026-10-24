@@ -84,12 +84,14 @@ public class PlayerController : MonoBehaviour
     int guardLayerIdx = -1; // GuardUpper 叠加层索引：上半身举盾姿势（腿在 Base 层照常跑动）
 
     int lastSwingHash;      // 上一次挥砍的状态 hash，用于识别"新的一刀"
-    Vector3 prevTip;        // 上一渲染帧的剑尖位置（扫掠起点）
-    Vector3 prevInner;      // 上一渲染帧剑尖段的内端点（扫掠胶囊轴的另一端）
-    bool sweepInit;         // 扫掠起点是否已采样
-    readonly HashSet<Health> hitThisSwing = new HashSet<Health>();  // 本刀已结算的目标（对同一目标只结算一次）
-    readonly HashSet<Rigidbody> hitPropsThisSwing = new HashSet<Rigidbody>();  // 本刀已推过的可互动物体（一次挥砍只推一次）
-    readonly HashSet<StoneBlock> bouncedThisSwing = new HashSet<StoneBlock>();  // 本刀已弹过刀的石头（一块石头只响应一次）
+
+    // 扫掠检测与命中结算：与敌人爪击、盾牌共用 SweepProbe / MeleeHitResolver
+    readonly SweepProbe bladeProbe = new SweepProbe();
+    readonly MeleeHitResolver resolver = new MeleeHitResolver();
+    readonly List<SweepProbe.Hit> sweepHits = new List<SweepProbe.Hit>();
+    MeleeHitResolver.Policy bladePolicy;    // 每帧从 Inspector 字段刷新（Play 模式调参即时生效）
+    System.Action<Vector3, Vector3> fleshCb;                 // 缓存委托：溅血（避免每帧方法组转换分配）
+    System.Action<Vector3, Vector3, StoneBlock> stoneCb;     // 缓存委托：弹刀
 
     // Animator 参数与状态名 hash
     static readonly int MovingId = Animator.StringToHash("Moving");
@@ -117,11 +119,11 @@ public class PlayerController : MonoBehaviour
         // 自动查找剑的判定点（Inspector 未指定时）
         if (bladeTip == null || bladeBase == null)
         {
-            var sword = FindDeep(transform, "Sword");
+            var sword = TransformUtil.FindDeep(transform, "Sword");
             if (sword != null)
             {
                 if (bladeBase == null) bladeBase = sword;
-                var tip = FindDeep(sword, "SwordTip");
+                var tip = TransformUtil.FindDeep(sword, "SwordTip");
                 if (bladeTip == null) bladeTip = tip != null ? tip : sword;
             }
         }
@@ -135,6 +137,9 @@ public class PlayerController : MonoBehaviour
 
         // 盾飞行中第一次撞到东西 → 相机提前结束投掷观察期
         if (shield != null) shield.FlightFirstHit += OnShieldFirstHit;
+
+        fleshCb = SprayBlood;
+        stoneCb = StoneBounced;
     }
 
     void OnDestroy()
@@ -150,7 +155,7 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        SweepHit();     // 扫掠检测跟动画帧走（Animator 在 Update 驱动），剑尖采样按渲染帧稳定推进
+        UpdateSweep();  // 扫掠检测跟动画帧走（Animator 在 Update 驱动），剑尖采样按渲染帧稳定推进
 
         // ---- 砍到石头的锁定：吞掉全部待处理输入（松开空格/攻击缓冲/右键）----
         //      不吞的话，解锁那一帧会立刻执行排队的那一下，玩家会觉得"我没按它自己动了"
@@ -407,7 +412,7 @@ public class PlayerController : MonoBehaviour
 
     /// <summary>
     /// 是否处在挥砍的<b>有效窗口</b>内：只认 A/B/C，且动画进度落在各自的 windowX 区间内。
-    /// 与下面 SweepHit 的命中判定共用同一套窗口定义，因此表现层（剑拖尾）
+    /// 与下面 UpdateSweep 的命中判定共用同一套窗口定义，因此表现层（剑拖尾）
     /// 与命中判定的开关时机完全一致——前摇和收势都不算在"挥砍中"。
     /// </summary>
     public bool IsSwingWindow()
@@ -415,18 +420,23 @@ public class PlayerController : MonoBehaviour
         var st = anim.GetCurrentAnimatorStateInfo(0);
         int h = st.shortNameHash;
         if (h != AH && h != BH && h != CH) return false;
-        Vector2 w = h == AH ? windowA : h == BH ? windowB : windowC;
+        Vector2 w = WindowOf(h);
         return st.normalizedTime >= w.x && st.normalizedTime <= w.y;
+    }
+
+    /// A/B/C 各刀的扫掠激活窗口（normalizedTime 区间）
+    Vector2 WindowOf(int h)
+    {
+        return h == AH ? windowA : h == BH ? windowB : windowC;
     }
 
     /// <summary>
     /// 扫掠命中：出刀状态的激活窗口内（normalizedTime 区间，跳过前摇/收势）每帧检测剑尖段胶囊（轴=剑尖段内端→剑尖，半径=bladeRadius）——
     /// ① 刃线（当前帧剑尖段是否压在敌人身上）；② 扫掠线（上一帧剑尖段沿挥扫方向扫过帧间距，防高速穿透漏检）。
     /// 只算剑尖这一段：判定体积贴近剑尖真实轨迹，命中时机与旧版零宽线一致，受击方向不会被"挥砍起势的前推分量"带偏。
-    /// 命中方向取剑尖本帧的挥扫速度方向，攻击因此"有方向"：横扫往侧向、下劈带向下分量。
-    /// 对同一敌人一次挥砍只结算一次。
+    /// 检测与结算分别由 SweepProbe / MeleeHitResolver 完成（与敌人爪击、盾牌共用），对同一敌人一次挥砍只结算一次。
     /// </summary>
-    void SweepHit()
+    void UpdateSweep()
     {
         var st = anim.GetCurrentAnimatorStateInfo(0);
         int h = st.shortNameHash;
@@ -435,65 +445,69 @@ public class PlayerController : MonoBehaviour
         if (!swinging || bladeTip == null)
         {
             lastSwingHash = 0;
-            sweepInit = false;
-            hitThisSwing.Clear();
-            hitPropsThisSwing.Clear();
-            bouncedThisSwing.Clear();
+            bladeProbe.Reset();
+            resolver.Begin();
             return;
         }
 
         if (h != lastSwingHash)     // 新的一刀：清空已结算列表，重新采样扫掠起点
         {
             lastSwingHash = h;
-            sweepInit = false;
-            hitThisSwing.Clear();
-            hitPropsThisSwing.Clear();
-            bouncedThisSwing.Clear();
+            bladeProbe.Reset();
+            resolver.Begin();
         }
 
         // 进度窗口：前摇/收势阶段剑尖轨迹不算攻击，窗口外不检测。
-        // 回到窗口内的第一帧会因 sweepInit=false 重新以当前剑尖为扫掠起点，前摇轨迹不会被连成扫掠线。
-        Vector2 w = h == AH ? windowA : h == BH ? windowB : windowC;
+        // 回到窗口内的第一帧会重新以当前剑尖为扫掠起点，前摇轨迹不会被连成扫掠线；
+        // 去重集合不清——同一刀窗口内已结算的目标不重复结算。
+        Vector2 w = WindowOf(h);
         if (st.normalizedTime < w.x || st.normalizedTime > w.y)
         {
-            sweepInit = false;
+            bladeProbe.Reset();
             return;
         }
+
+        // 结算策略每帧从 Inspector 字段刷新（Play 模式调参即时生效）
+        bladePolicy.propLayer = propLayer;
+        bladePolicy.mass = bladeMass;
+        bladePolicy.maxSpeed = maxSwingSpeed;
+        bladePolicy.damage = attackDamage;
+        bladePolicy.targetTeam = Health.Team.Enemy;
+        bladePolicy.propApplyImpulse = false;   // 箱子击飞交给 BladeCollider 的真实物理碰撞（碰撞矩阵里 Blade 层只与 Prop 碰），这里只登记
+        bladePolicy.onStone = stoneCb;
+        bladePolicy.onFlesh = fleshCb;
 
         Vector3 tipNow = bladeTip.position;
-        Vector3 baseNow = bladeBase != null ? bladeBase.position : prevTip;
+        Vector3 baseNow = bladeBase != null ? bladeBase.position : tipNow;
         Vector3 innerNow = TipInner(tipNow, baseNow);       // 剑尖段内端点（只取剑尖 tipLength 这一段）
-        if (!sweepInit)
+
+        // 挥扫方向：本帧位移 → 位移近零时退化为剑身指向（SweepProbe 内再退化为 forward）；速度按帧间位移/dt 算
+        bladeProbe.Probe(innerNow, tipNow, bladeRadius, tipNow - baseNow, sweepHits);
+        for (int i = 0; i < sweepHits.Count; i++)
         {
-            prevTip = tipNow;       // 首帧只记录起点，不做检测
-            prevInner = innerNow;
-            sweepInit = true;
-            return;
+            var hit = sweepHits[i];
+            resolver.Resolve(hit.collider, hit.sweepDir, hit.velocity, hit.point, bladePolicy);
         }
 
-        Vector3 swingDir = tipNow - prevTip;
-        if (swingDir.sqrMagnitude < 0.0001f)    // 本帧剑尖几乎没动时，退化为剑身指向
-            swingDir = tipNow - (bladeBase != null ? bladeBase.position : prevTip);
-        if (swingDir.sqrMagnitude < 0.0001f)
-            swingDir = transform.forward;
-
-        // 剑尖真实线速度（m/s）：帧间位移 / dt（dt 钳上下限，防卡顿帧算出荒谬速度）
-        float dt = Mathf.Clamp(Time.deltaTime, 1f / 240f, 1f / 20f);
-        Vector3 tipVel = (tipNow - prevTip) / dt;
-
-        BladeOverlap(innerNow, tipNow, swingDir, tipVel);           // ① 刃线：当前帧剑尖段胶囊与敌人重叠
-        BladeSweep(prevInner, prevTip, tipNow, swingDir, tipVel);   // ② 扫掠线：上一帧剑尖段沿挥扫方向扫过帧间距
-
-        if (debugSweep)
+        if (debugSweep && bladeProbe.ProbedLast)
         {
             Debug.DrawLine(innerNow, tipNow, Color.yellow, 0.1f);
-            Debug.DrawLine(prevTip, tipNow, Color.red, 0.1f);
+            Debug.DrawLine(bladeProbe.prevB, tipNow, Color.red, 0.1f);
             DebugRadius(innerNow, bladeRadius, Color.yellow);
             DebugRadius(tipNow, bladeRadius, Color.red);
         }
+    }
 
-        prevTip = tipNow;
-        prevInner = innerNow;
+    /// 溅血：沿挥扫方向甩出去（resolver 在去重之后回调，所以同一刀对同一敌人只喷一次）
+    void SprayBlood(Vector3 point, Vector3 swingDir)
+    {
+        if (bloodFx != null) bloodFx.Spray(point, swingDir);
+    }
+
+    /// 弹刀：中断挥砍 + 播砍不动动画 + 迸火星（接触点当火星的出生地）
+    void StoneBounced(Vector3 point, Vector3 swingDir, StoneBlock stone)
+    {
+        if (stoneReaction != null) stoneReaction.HitStone(point, swingDir, stone);
     }
 
     /// 剑尖段内端点：从剑尖沿刃方向往剑根退 tipLength（不超过剑长，tipLength=0 时退化为剑尖点）
@@ -511,58 +525,6 @@ public class PlayerController : MonoBehaviour
         Debug.DrawLine(center + Vector3.right * r, center - Vector3.right * r, c, 0.1f);
         Debug.DrawLine(center + Vector3.up * r, center - Vector3.up * r, c, 0.1f);
         Debug.DrawLine(center + Vector3.forward * r, center - Vector3.forward * r, c, 0.1f);
-    }
-
-    /// 刃线检测：当前帧剑尖段以胶囊（轴=剑尖段内端→剑尖，半径=bladeRadius）与敌人重叠即命中
-    void BladeOverlap(Vector3 p1, Vector3 p2, Vector3 swingDir, Vector3 tipVel)
-    {
-        var cols = Physics.OverlapCapsule(p1, p2, bladeRadius);
-        for (int i = 0; i < cols.Length; i++)
-            SettleHit(cols[i], swingDir, tipVel, cols[i].SafeClosestPoint(bladeTip.position));   // 重叠无命中点，取物体上离剑尖最近的点（地面等不支持类型走包围盒近似）
-    }
-
-    /// 扫掠检测：上一帧剑尖段胶囊沿挥扫方向扫过帧间距（旋转扫掠以平移近似，帧间误差厘米级）。
-    /// CapsuleCast 不报告初始重叠，起始帧的重叠由上一帧的刃线检测负责，帧间衔接无缝。
-    void BladeSweep(Vector3 prevInner, Vector3 prevTip, Vector3 tipNow, Vector3 swingDir, Vector3 tipVel)
-    {
-        Vector3 move = tipNow - prevTip;
-        if (move.sqrMagnitude < 1e-8f) return;
-        var hits = Physics.CapsuleCastAll(prevInner, prevTip, bladeRadius, move, move.magnitude);
-        for (int i = 0; i < hits.Length; i++)
-            SettleHit(hits[i].collider, swingDir, tipVel, hits[i].point);   // cast 自带命中点
-    }
-
-    /// 命中结算：可互动物体（Prop 层）在接触点施加冲量；敌人按阵营/已死/本刀重复过滤后扣血。
-    /// 主角/敌人/平台不在 Prop 层，走不到冲量分支，因此不受推力影响。
-    void SettleHit(Collider col, Vector3 swingDir, Vector3 tipVel, Vector3 point)
-    {
-        if (PropImpulse.IsProp(col.gameObject, propLayer))
-        {
-            // 箱子的击飞交给 BladeCollider 的真实物理碰撞（碰撞矩阵里 Blade 层只与 Prop 碰），
-            // 这里只登记一下，保持"一次挥砍对每个物体只处理一次"的语义，避免逐帧重复。
-            // （想改回冲量模型就换成 PropImpulse.Apply(...) 并禁用 BladeCollider）
-            if (col.attachedRigidbody != null) hitPropsThisSwing.Add(col.attachedRigidbody);
-            return;
-        }
-
-        // ---- 石头/硬质障碍：剑砍不动 → 中断挥砍 + 播砍不动动画 + 迸火星 ----
-        //      接触点已经有了（刃线取物体上离剑尖最近的点、扫掠取 cast 命中点），直接传给反馈脚本当火星的出生地
-        var stone = col.GetComponentInParent<StoneBlock>();
-        if (stone != null)
-        {
-            if (!stone.bounces) return;
-            if (!bouncedThisSwing.Add(stone)) return;   // 这块石头本刀已响应过
-            if (stoneReaction != null) stoneReaction.HitStone(point, swingDir, stone);
-            return;
-        }
-
-        var hp = col.GetComponentInParent<Health>();
-        if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
-        if (!hitThisSwing.Add(hp)) return;    // 这个目标本刀已结算过
-        hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(tipVel, bladeMass), point);   // 冲量决定晃动幅度，命中点决定布娃娃飞散姿态
-
-        // 溅血：沿本帧挥扫方向甩出去。去重在上一行之后，所以同一刀对同一敌人只喷一次
-        if (bloodFx != null) bloodFx.Spray(point, swingDir);
     }
 
     /// 是否处于举盾姿态：GuardUpper 层权重过半（举手姿势已明显叠加）。
@@ -605,18 +567,6 @@ public class PlayerController : MonoBehaviour
     {
         v.y = 0f;
         return v.normalized;
-    }
-
-    /// 递归查找子孙节点（按名字）
-    static Transform FindDeep(Transform root, string name)
-    {
-        if (root.name == name) return root;
-        for (int i = 0; i < root.childCount; i++)
-        {
-            var r = FindDeep(root.GetChild(i), name);
-            if (r != null) return r;
-        }
-        return null;
     }
 
     void ZeroHorizontalVelocity()

@@ -130,8 +130,8 @@ public class SwordTrail : MonoBehaviour
         if (bladeBase != null && bladeTip != null) return;
 
         Transform root = controller != null ? controller.transform : transform;
-        if (bladeBase == null) bladeBase = FindDeep(root, "Sword");
-        if (bladeTip == null) bladeTip = FindDeep(root, "SwordTip");
+        if (bladeBase == null) bladeBase = TransformUtil.FindDeep(root, "Sword");
+        if (bladeTip == null) bladeTip = TransformUtil.FindDeep(root, "SwordTip");
     }
 
     void AddSample()
@@ -226,19 +226,6 @@ public class SwordTrail : MonoBehaviour
     {
         ClearSamples();
         if (rend != null) rend.enabled = false;
-    }
-
-    /// <summary>递归查找子孙节点（按名字精确匹配）。</summary>
-    static Transform FindDeep(Transform root, string name)
-    {
-        if (root == null) return null;
-        if (root.name == name) return root;
-        for (int i = 0; i < root.childCount; i++)
-        {
-            var r = FindDeep(root.GetChild(i), name);
-            if (r != null) return r;
-        }
-        return null;
     }
 
     /// <summary>

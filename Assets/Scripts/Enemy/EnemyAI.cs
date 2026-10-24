@@ -40,7 +40,7 @@ public class EnemyAI : MonoBehaviour
     [Header("弹反")]
     [Tooltip("可弹反窗口的起点（动画进度）：前摇（抬手）结束、爪子开始挥出的那一瞬。\nZombie_Scratch 实测：手掌速度峰值在 0.30~0.34，0.26 之前是抬手")]
     [Range(0f, 1f)] public float parryWindowStart = 0.22f;
-    [Tooltip("可弹反窗口的终点（动画进度）：刻意放宽到挥击段之后 —— 真正的终点是\"爪子打到主角\"那一瞬，\n由 playerHitDone 在命中时自动切断（见 IsInParryWindow），命中之后按防御一律不算弹反。\n实测 1.2m 距离下命中在第 18.5 帧(0.343)，所以有效窗口 ≈ 第 12~18.5 帧")]
+    [Tooltip("可弹反窗口的终点（动画进度）：刻意放宽到挥击段之后 —— 真正的终点是\"爪子打到主角\"那一瞬，\n由 resolver.HasHitTarget 在命中时自动切断（见 IsInParryWindow），命中之后按防御一律不算弹反。\n实测 1.2m 距离下命中在第 18.5 帧(0.343)，所以有效窗口 ≈ 第 12~18.5 帧")]
     [Range(0f, 1f)] public float parryWindowEnd = 0.45f;
 
     Rigidbody rb;
@@ -50,10 +50,12 @@ public class EnemyAI : MonoBehaviour
     float nextAttackTime;
     bool spawnChase;    // 出生直追：生成点在 spawnDistance(16m) > detectRange(12m)，出生时在感知圈外，
                         // 没有它敌人会在原地永远待机 —— 出生时知道主角位置，追进感知圈后交还正常感知（跑远可甩开）
-    Vector3 prevHandL, prevHandR;   // 上一渲染帧两手掌位置（扫掠起点）
-    bool sweepInit;                 // 扫掠起点是否已采样
-    bool playerHitDone;             // 本次挥爪是否已结算（对玩家只结算一次）
-    readonly HashSet<Rigidbody> hitPropsThisSwipe = new HashSet<Rigidbody>();  // 本次挥爪已推过的可互动物体（一次挥爪只推一次）
+    // 扫掠检测与命中结算：与主角挥砍、盾牌共用 SweepProbe / MeleeHitResolver
+    readonly SweepProbe probeL = new SweepProbe();   // 左手掌
+    readonly SweepProbe probeR = new SweepProbe();   // 右手掌
+    readonly MeleeHitResolver resolver = new MeleeHitResolver();
+    readonly List<SweepProbe.Hit> sweepHits = new List<SweepProbe.Hit>();
+    MeleeHitResolver.Policy clawPolicy;   // 每帧从 Inspector 字段刷新（Play 模式调参即时生效）
 
     static readonly int MovingId = Animator.StringToHash("Moving");
     static readonly int AttackId = Animator.StringToHash("Attack");
@@ -68,8 +70,8 @@ public class EnemyAI : MonoBehaviour
             var p = GameObject.Find("Player");
             if (p != null) target = p.transform;
         }
-        if (handL == null) handL = FindDeep(transform, "hand_l");
-        if (handR == null) handR = FindDeep(transform, "hand_r");
+        if (handL == null) handL = TransformUtil.FindDeep(transform, "hand_l");
+        if (handR == null) handR = TransformUtil.FindDeep(transform, "hand_r");
         if (stagger == null) stagger = GetComponent<EnemyStagger>();
     }
 
@@ -82,8 +84,8 @@ public class EnemyAI : MonoBehaviour
     {
         if (stagger != null && stagger.IsLocked) return false;
         // 这一击已经打到主角、伤害也结算了 —— 挨完打再按防御不算弹反（弹反只能在挨打之前）。
-        // playerHitDone 由 SweepHands 的结算置位，非攻击状态/被弹反时自动复位，下一击重新可弹反。
-        if (playerHitDone) return false;
+        // HasHitTarget 由手掌扫掠的结算置位（resolver.Begin 复位），非攻击状态/被弹反/新的一击起手时清掉，下一击重新可弹反。
+        if (resolver.HasHitTarget) return false;
 
         var st = anim.GetCurrentAnimatorStateInfo(0);
         if (st.shortNameHash != AttackStateH) return false;
@@ -105,7 +107,7 @@ public class EnemyAI : MonoBehaviour
 
     void Update()
     {
-        SweepHands();   // 扫掠检测跟动画帧走（Animator 在 Update 驱动），手掌采样按渲染帧稳定推进
+        UpdateSweep();  // 扫掠检测跟动画帧走（Animator 在 Update 驱动），手掌采样按渲染帧稳定推进
     }
 
     void FixedUpdate()
@@ -145,7 +147,9 @@ public class EnemyAI : MonoBehaviour
             if (Time.time >= nextAttackTime)
             {
                 anim.SetTrigger(AttackId);
-                playerHitDone = false;      // 新的一击起手：重新可弹反（不单靠 SweepHands 复位，防止动画直接 Attack→Attack 时把弹反锁死）
+                // 新的一击起手：清空"已命中玩家/已推箱子"标记，重新可弹反
+                // （不单靠 UpdateSweep 的退出路径复位，防止动画直接 Attack→Attack 时把弹反锁死）
+                resolver.Begin();
                 nextAttackTime = Time.time + attackInterval;
             }
         }
@@ -171,99 +175,49 @@ public class EnemyAI : MonoBehaviour
     /// <summary>
     /// 手掌扫掠命中：攻击状态下每帧检测两手掌"上一帧→当前帧"的带宽度扫掠（球体半径 clawRadius），
     /// 手掌轨迹真正扫到主角才结算（抬手阶段天然不判定），方向取手掌挥扫速度方向。
-    /// 对主角一次挥爪只结算一次。
+    /// 检测与结算由 SweepProbe / MeleeHitResolver 完成（与主角挥砍、盾牌共用）。
+    /// 对主角一次挥爪只结算一次（resolver.HasHitTarget，弹反窗口读同一个标记）。
     /// </summary>
-    void SweepHands()
+    void UpdateSweep()
     {
-        if (stagger != null && stagger.IsLocked)   // 被弹反后这一击不再结算伤害
+        // 被弹反后这一击不再结算伤害；非攻击状态重置采样与去重
+        if ((stagger != null && stagger.IsLocked)
+            || target == null || (!IsAttacking()) || (handL == null && handR == null))
         {
-            sweepInit = false;
-            playerHitDone = false;
-            hitPropsThisSwipe.Clear();
+            probeL.Reset();
+            probeR.Reset();
+            resolver.Begin();
             return;
         }
 
-        if (target == null || (!IsAttacking()) || (handL == null && handR == null))
-        {
-            sweepInit = false;
-            playerHitDone = false;
-            hitPropsThisSwipe.Clear();
-            return;
-        }
+        // 结算策略每帧从 Inspector 字段刷新（Play 模式调参即时生效）
+        clawPolicy.propLayer = propLayer;
+        clawPolicy.mass = clawMass;
+        clawPolicy.maxSpeed = maxClawSpeed;
+        clawPolicy.damage = attackDamage;
+        clawPolicy.targetTeam = Health.Team.Player;
+        clawPolicy.propApplyImpulse = true;   // 箱子由冲量击飞（敌人爪没有主角剑的 BladeCollider 物理碰撞）
+        clawPolicy.onStone = null;            // 爪子打石头无特殊反馈
+        clawPolicy.onFlesh = null;
 
-        if (!sweepInit)
-        {
-            if (handL != null) prevHandL = handL.position;
-            if (handR != null) prevHandR = handR.position;
-            sweepInit = true;
-            return;
-        }
-
-        SweepHand(handL, ref prevHandL);
-        SweepHand(handR, ref prevHandR);
+        if (handL != null) ProbeHand(probeL, handL); else probeL.Reset();
+        if (handR != null) ProbeHand(probeR, handR); else probeR.Reset();
     }
 
     /// 单只手掌的带宽度扫掠检测（球体近似爪击体积）：命中玩家方 Health 结算一次，命中 Prop 层箱子施加冲量
-    void SweepHand(Transform hand, ref Vector3 prev)
+    void ProbeHand(SweepProbe probe, Transform hand)
     {
-        if (hand == null) return;
-
         Vector3 now = hand.position;
-        Vector3 swingDir = now - prev;
-
-        if (swingDir.sqrMagnitude > 0.0001f)
+        probe.Probe(now, now, clawRadius, Vector3.zero, sweepHits);   // 球体 = 胶囊两端重合
+        for (int i = 0; i < sweepHits.Count; i++)
         {
-            // 手掌真实线速度（m/s）：帧间位移 / dt（dt 钳上下限，防卡顿帧算出荒谬速度）
-            float dt = Mathf.Clamp(Time.deltaTime, 1f / 240f, 1f / 20f);
-            Vector3 handVel = swingDir / dt;
-
-            // ① 起点球重叠：挥爪瞬间爪子已贴在目标身上（SphereCast 不报告初始重叠，需单独补；
-            //    上一帧的终点重叠也由此处衔接覆盖）
-            var cols = Physics.OverlapSphere(prev, clawRadius);
-            for (int i = 0; i < cols.Length; i++)
-                SettleHit(cols[i], swingDir, handVel, cols[i].SafeClosestPoint(now));
-
-            // ② 扫掠球：上一帧→当前帧爪子扫过的路径（cast 自带命中点）
-            var hits = Physics.SphereCastAll(prev, clawRadius, swingDir, swingDir.magnitude);
-            for (int i = 0; i < hits.Length; i++)
-                SettleHit(hits[i].collider, swingDir, handVel, hits[i].point);
-
-            if (playerHitDone && debugSweep) Debug.DrawLine(prev, now, Color.green, 1f);
+            var hit = sweepHits[i];
+            resolver.Resolve(hit.collider, hit.sweepDir, hit.velocity, hit.point, clawPolicy);
         }
 
-        if (debugSweep && swingDir.sqrMagnitude > 0.0001f)
-            Debug.DrawLine(prev, now, Color.magenta, 0.1f);
-
-        prev = now;
-    }
-
-    /// 命中结算：可互动物体（Prop 层）在接触点施加冲量（不受 playerHitDone 影响，箱子照样被推）；
-    /// 玩家方 Health 按阵营/已死/本次挥爪重复过滤后扣血。主角/敌人/平台不在 Prop 层，走不到冲量分支。
-    void SettleHit(Collider col, Vector3 swingDir, Vector3 handVel, Vector3 point)
-    {
-        if (PropImpulse.IsProp(col.gameObject, propLayer))
-        {
-            PropImpulse.Apply(col.attachedRigidbody, handVel, clawMass, maxClawSpeed, point, hitPropsThisSwipe);
-            return;
-        }
-
-        if (playerHitDone) return;
-        var hp = col.GetComponentInParent<Health>();
-        if (hp == null || hp.IsDead || hp.team != Health.Team.Player) return;
-        playerHitDone = true;
-        hp.TakeDamage(attackDamage, swingDir, PropImpulse.Magnitude(handVel, clawMass), point);   // 冲量决定晃动幅度，命中点决定布娃娃飞散姿态
-    }
-
-    /// 递归查找子孙节点（按名字）
-    static Transform FindDeep(Transform root, string name)
-    {
-        if (root.name == name) return root;
-        for (int i = 0; i < root.childCount; i++)
-        {
-            var r = FindDeep(root.GetChild(i), name);
-            if (r != null) return r;
-        }
-        return null;
+        if (debugSweep && probe.ProbedLast)
+            Debug.DrawLine(probe.prevB, now, resolver.HasHitTarget ? Color.green : Color.magenta,
+                           resolver.HasHitTarget ? 1f : 0.1f);
     }
 
     /// 是否正在播放攻击动画（含 Attack→Idle/Walk 的过渡，仍按源状态判定）

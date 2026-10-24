@@ -115,7 +115,7 @@ public class CapeCloth : MonoBehaviour
     /// 初始化粒子/约束/网格/碰撞球（Awake 自动调用；编辑模式下也可手动调用预览）
     public void BuildNow()
     {
-        spine = anchorBone != null ? anchorBone : FindDeep(transform.root != null ? transform.root : transform, "spine_02");
+        spine = anchorBone != null ? anchorBone : TransformUtil.FindDeep(transform.root != null ? transform.root : transform, "spine_02");
         if (spine == null) { Debug.LogError("[CapeCloth] 找不到锚骨 spine_02"); return; }
         InitParticles();
         BuildConstraints();
@@ -162,9 +162,9 @@ public class CapeCloth : MonoBehaviour
     void AddSeg(System.Collections.Generic.List<ColSeg> segs, string boneA, string boneB, float r)
     {
         var root = transform.root != null ? transform.root : transform;
-        Transform a = FindDeep(root, boneA);
+        Transform a = TransformUtil.FindDeep(root, boneA);
         if (a == null) return;
-        segs.Add(new ColSeg { a = a, b = boneB != null ? FindDeep(root, boneB) : null, r = r });
+        segs.Add(new ColSeg { a = a, b = boneB != null ? TransformUtil.FindDeep(root, boneB) : null, r = r });
     }
 
     /// 把非锚点粒子推出身体碰撞段（迭代内调用，与约束求解交替收敛，最后一轮保证不穿身体）。
@@ -265,8 +265,8 @@ public class CapeCloth : MonoBehaviour
         cornerAnchorsDirty = false;
         if (!cornersFollowShoulders || cols < 2) return;
         var root = transform.root != null ? transform.root : transform;
-        Transform l = FindDeep(root, "upperarm_l");
-        Transform r = FindDeep(root, "upperarm_r");
+        Transform l = TransformUtil.FindDeep(root, "upperarm_l");
+        Transform r = TransformUtil.FindDeep(root, "upperarm_r");
         if (l == null && r == null) return;
 
         Vector3 w0 = pos[0], w1 = pos[cols - 1];
@@ -465,16 +465,4 @@ public class CapeCloth : MonoBehaviour
 
     /// Inspector 里切换"角点跟肩"后懒生效（LateUpdate 重绑）；仅开关值变化才置位，避免其他参数改动触发重绑
     void OnValidate() { if (cornerAnchorsActive != cornersFollowShoulders) cornerAnchorsDirty = true; }
-
-    /// 递归查找子孙节点（按名字）
-    static Transform FindDeep(Transform root, string name)
-    {
-        if (root.name == name) return root;
-        for (int i = 0; i < root.childCount; i++)
-        {
-            var r = FindDeep(root.GetChild(i), name);
-            if (r != null) return r;
-        }
-        return null;
-    }
 }

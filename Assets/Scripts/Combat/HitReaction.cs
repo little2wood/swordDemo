@@ -47,8 +47,8 @@ public class HitReaction : MonoBehaviour
             spine = anim.GetBoneTransform(HumanBodyBones.Spine);
             head = anim.GetBoneTransform(HumanBodyBones.Head);
         }
-        if (spine == null) spine = FindDeep(transform, "spine");
-        if (head == null) head = FindDeep(transform, "head");
+        if (spine == null) spine = TransformUtil.FindDeepContains(transform, "spine");
+        if (head == null) head = TransformUtil.FindDeepContains(transform, "head");
         if (hp != null) hp.OnDamaged += OnHit;
     }
 
@@ -96,17 +96,5 @@ public class HitReaction : MonoBehaviour
         float d = deg * weight;
         if (Mathf.Abs(d) < 0.02f) return;
         bone.rotation = Quaternion.AngleAxis(d, axis) * bone.rotation;
-    }
-
-    /// 递归查找子孙节点（名字包含关键词，小写比较；humanoid 映射取不到时的兜底）
-    static Transform FindDeep(Transform root, string keyword)
-    {
-        if (root.name.ToLower().Contains(keyword)) return root;
-        for (int i = 0; i < root.childCount; i++)
-        {
-            var r = FindDeep(root.GetChild(i), keyword);
-            if (r != null) return r;
-        }
-        return null;
     }
 }

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -6,7 +5,7 @@ using UnityEngine;
 /// 出手：空格瞄准（ThrowReticle 用与飞行相同的积分画预瞄点），松开甩出 —— 完全交给物理：
 /// 重力按 gravityScale 缩放 + 微阻尼 + 绕盾面法线的自旋，没有任何追踪/制导，轨迹全由出手方向决定；停下后冻结在原地。
 /// 召回：右键把盾沿"竖直拱起 + 水平侧向绕行"的弧线吸回手（kinematic 插值，路径扫掠兜底敌人/石头命中并中断）。
-/// 命中结算：飞行/召回途中撞到 Prop 击飞、敌人扣血（SettleHit），撞石头只中断召回、无伤害。
+/// 命中结算：飞行/召回途中撞到 Prop 击飞、敌人扣血（MeleeHitResolver），撞石头只中断召回、无伤害。
 /// 破防掉盾：PlayerGuard 破防时按动画逐帧采样的手速把盾打飞（BeginBreakThrow），之后复用 Flying 流程。
 /// 状态：InHand → Flying → Loose → Returning（召回中）→ InHand；破防掉盾从 InHand 直接进 Flying。
 /// </summary>
@@ -115,9 +114,9 @@ public class ShieldThrow : MonoBehaviour
     bool sampleInit;
     bool fromBreak;      // 本次飞行是"被打掉"而不是主动投掷：不触发投掷观察期
 
-    // 一次飞行内的命中去重：同一个箱子/同一个敌人只结算一次，避免弹跳反复触发
-    readonly HashSet<Rigidbody> hitThisThrow = new HashSet<Rigidbody>();
-    readonly HashSet<Health> hitThisThrowHealth = new HashSet<Health>();
+    // 一次飞行内的命中去重与结算（与挥砍/爪击共用 MeleeHitResolver）：
+    // 同一个箱子/同一个敌人只结算一次，避免弹跳反复触发；Begin 时机由各飞行入口（Throw/StartReturn/ReleaseBreak）决定
+    readonly MeleeHitResolver resolver = new MeleeHitResolver();
     Vector3 lastVel;        // 最近一次 FixedUpdate 的盾速度（碰撞时物理已改过 rb，用它当碰撞前速度）
 
     // 召回路径扫掠（帧率无关的敌人检测）：
@@ -148,7 +147,7 @@ public class ShieldThrow : MonoBehaviour
         Transform self = transform;
         if (!string.IsNullOrEmpty(socketName))
         {
-            Transform found = FindDeep(owner != null ? owner : transform, socketName);
+            Transform found = TransformUtil.FindDeep(owner != null ? owner : transform, socketName);
             if (found != null) self = found;
         }
         socketParent = self.parent;
@@ -218,10 +217,9 @@ public class ShieldThrow : MonoBehaviour
         if (Current != State.Flying && Current != State.Loose) return;
         if (socketParent == null) { SetIdle(); return; }
 
-        // 命中去重按"一次飞行"算：召回是独立的一次飞行，集合要重新清空——
+        // 命中去重按"一次飞行"算：召回是独立的一次飞行，标记要重新清空——
         // 否则投掷时已经打过的敌人，召回再撞到就不会结算了
-        hitThisThrow.Clear();
-        hitThisThrowHealth.Clear();
+        resolver.Begin();
 
         returnFrom = transform.position;
         prevReturnPos = returnFrom;
@@ -366,8 +364,7 @@ public class ShieldThrow : MonoBehaviour
         restTimer = 0f;
         firstHitFired = false;
         fromBreak = true;
-        hitThisThrow.Clear();
-        hitThisThrowHealth.Clear();
+        resolver.Begin();
         lastVel = v;        // 碰撞结算当作"碰撞前速度"
     }
 
@@ -443,18 +440,20 @@ public class ShieldThrow : MonoBehaviour
         // ---- 召回途中：撞到敌人 → 结算伤害并中断召回；撞到石头 → 只中断召回；撞到别的（箱子等）维持现状 ----
         // 召回的盾是 kinematic 且逐帧瞬移，物理消息发不发并不可靠（会隧穿漏检），
         // 真正兜底的是 Update 里的路径扫掠 SweepHitReturn —— 这里收到消息就提前精确结算一次。
+        Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
+
         if (Current == State.Returning)
         {
             var hpBack = collision.collider.GetComponentInParent<Health>();
             if (hpBack != null && !hpBack.IsDead && hpBack.team == Health.Team.Enemy)
-                BreakReturn(collision);
+                BreakReturn(collision.collider, point);
             else if (collision.collider.GetComponentInParent<StoneBlock>() != null)
                 BreakReturnByStone();
             return;
         }
 
-        Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
-        SettleHit(collision.collider, point);
+        // 飞行命中：速度/方向取最近一次物理步的盾速（lastVel），方向退化时用盾面朝向
+        resolver.Resolve(collision.collider, VelocityDir(lastVel), lastVel, point, ShieldPolicy());
 
         // 相机的"投掷观察期"只关心第一次碰撞，之后继续撞不再重复通知。
         // 破防掉盾不是主动投掷，不拉观察期。
@@ -466,23 +465,27 @@ public class ShieldThrow : MonoBehaviour
     }
 
     /// <summary>
-    /// 召回途中撞到敌人（物理消息入口）：结算伤害并中断召回，核心见 BreakReturnCore。
+    /// 召回途中撞到敌人：结算伤害并中断召回，核心见 BreakReturn(Collider, Vector3)。
     /// </summary>
-    void BreakReturn(Collision collision)
+    void BreakReturn(Collider hitCol, Vector3 point)
     {
-        Vector3 point = collision.contactCount > 0 ? collision.GetContact(0).point : transform.position;
-        BreakReturnCore(collision.collider, point);
+        if (Current != State.Returning) return;   // 兼任防重入：物理消息与路径扫掠可能同帧都命中，只处理一次
+
+        // 召回弧线的瞬时速度：既是结算用的"碰撞前速度"，也是中断后盾的初速度
+        Vector3 v = ReturnVelocity();
+        resolver.Resolve(hitCol, VelocityDir(v), v, point, ShieldPolicy());
+        CancelReturn(v);
     }
 
     /// 召回途中撞到敌人（路径扫掠入口）：查询拿不到精确接触点，用盾当前位置
     void BreakReturnBySweep(Collider hitCol)
     {
-        BreakReturnCore(hitCol, transform.position);
+        BreakReturn(hitCol, transform.position);
     }
 
     /// <summary>
     /// 召回途中撞到石头：只中断召回、盾被弹开落地 —— 无伤害结算、无火星、无弹刀动画。
-    /// 刻意不走 BreakReturnCore：那条路会调 SettleHit，其中石头分支会触发剑的弹刀。
+    /// 刻意不走 BreakReturn：那条路会结算敌人伤害（resolver 的敌人分支），石头不该吃伤害。
     /// 转 dynamic 后按召回瞬时速度交给物理，被静态石头挡住自然弹开；
     /// 切回 Flying 复用现有的"重力 + 减速 → 停下冻结(Loose)"流程，玩家可随时再按右键召回。
     /// 开头的状态检查兼任防重入（物理消息与扫掠可能同帧都命中，只处理一次）。
@@ -491,39 +494,19 @@ public class ShieldThrow : MonoBehaviour
     {
         if (Current != State.Returning) return;
 
-        // 召回弧线的瞬时速度当作中断后的初速度
-        Vector3 v = ReturnVelocity();
-        lastVel = v;
-
         // 本次飞行不是主动投掷命中，落地时不再拉"投掷观察期"
         fromBreak = true;
-
-        rb.isKinematic = false;
-        rb.linearVelocity = v;
-        Vector3 axis = transform.TransformDirection(DetectSpinAxisLocal());   // 延续出手的盘式自旋
-        rb.angularVelocity = (axis.sqrMagnitude > 1e-6f ? axis.normalized : Vector3.up) * spinRate;
-        Current = State.Flying;
+        CancelReturn(ReturnVelocity());   // 召回弧线的瞬时速度当作中断后的初速度
     }
 
     /// <summary>
-    /// 召回中断核心：结算伤害并中断召回。
-    /// 伤害走 SettleHit 的敌人分支（扣血 → Health.OnDamaged → HitReaction 自动播放受击摆动），
-    /// 冲量/方向用召回弧线在当前进度的瞬时速度 —— 与投掷命中同一把标尺。
-    /// 之后脱离插值、转回动态刚体，按当前速度交给物理自然弹开、落地；
+    /// 召回中断：脱离插值、转回动态刚体，按给定初速度交给物理自然弹开、落地（自旋延续出手的盘式自旋）。
     /// 切回 Flying 复用现有的"重力 + 减速 → 停下冻结(Loose)"流程，玩家可随时再按右键召回。
     /// 主角侧零配合：IsReturning 变 false 后强制举盾自动解除，左手自然放下。
-    /// 开头的状态检查兼任防重入：物理消息与扫掠探测可能同帧都命中，只处理一次。
     /// </summary>
-    void BreakReturnCore(Collider hitCol, Vector3 point)
+    void CancelReturn(Vector3 v)
     {
-        if (Current != State.Returning) return;
-
-        // 召回弧线的瞬时速度：既是中断后盾的初速度，也是结算用的"碰撞前速度"
-        Vector3 v = ReturnVelocity();
         lastVel = v;
-
-        SettleHit(hitCol, point);   // 与投掷命中同一套结算（含去重；若刚被跳过也照常中断）
-
         rb.isKinematic = false;
         rb.linearVelocity = v;
         Vector3 axis = transform.TransformDirection(DetectSpinAxisLocal());   // 延续出手的盘式自旋
@@ -597,27 +580,25 @@ public class ShieldThrow : MonoBehaviour
     }
 
     /// <summary>
-    /// 命中结算：箱子走 PropImpulse 冲量击飞；敌人走 ShieldHitReaction 按骨骼局部受力 + 扣血。
-    /// （这里刻意不走 HitReaction —— 投掷盾牌是独立方案，不叠加统一的上半身摆动。）
+    /// 盾的命中结算策略（交由共用的 MeleeHitResolver 执行）：箱子走 PropImpulse 冲量击飞；
+    /// 敌人扣血（Health.OnDamaged → HitReaction 统一上半身摆动；致死时自动交给原 Ragdoll 方案）。
     /// </summary>
-    void SettleHit(Collider col, Vector3 point)
+    MeleeHitResolver.Policy ShieldPolicy()
     {
-        // ---- 可互动物体（Prop 层）：接触点施加冲量，偏心命中自动产生扭矩 ----
-        if (PropImpulse.IsProp(col.gameObject, propLayer))
-        {
-            PropImpulse.Apply(col.attachedRigidbody, lastVel, shieldMass, maxThrowSpeed, point, hitThisThrow);
-            return;
-        }
+        var p = new MeleeHitResolver.Policy();
+        p.propLayer = propLayer;
+        p.mass = shieldMass;
+        p.maxSpeed = maxThrowSpeed;
+        p.damage = throwDamage;
+        p.targetTeam = Health.Team.Enemy;
+        p.propApplyImpulse = true;
+        return p;
+    }
 
-        // ---- 敌人：和挥砍/爪击走同一套受击反馈（HitReaction 统一上半身摆动） ----
-        var hp = col.GetComponentInParent<Health>();
-        if (hp == null || hp.IsDead || hp.team != Health.Team.Enemy) return;
-        if (!hitThisThrowHealth.Add(hp)) return;    // 这次飞行已结算过该目标
-
-        Vector3 dir = lastVel.sqrMagnitude > 1e-6f ? lastVel.normalized : transform.forward;
-        float impulse = PropImpulse.Magnitude(lastVel, shieldMass);
-
-        hp.TakeDamage(throwDamage, dir, impulse, point);   // 致死时自动交给原 Ragdoll 方案
+    /// 命中前速度的方向（速度近零时退化为盾面朝向）
+    Vector3 VelocityDir(Vector3 v)
+    {
+        return v.sqrMagnitude > 1e-6f ? v.normalized : transform.forward;
     }
 
     // ---------- 出手 ----------
@@ -746,8 +727,7 @@ public class ShieldThrow : MonoBehaviour
         restTimer = 0f;
         firstHitFired = false;
         fromBreak = false;
-        hitThisThrow.Clear();
-        hitThisThrowHealth.Clear();
+        resolver.Begin();
         lastVel = dir * throwSpeed;     // 出手瞬间速度：碰撞结算用（物理步之后 rb 的速度已被改写）
 
         rb.linearVelocity = dir * throwSpeed;
@@ -824,15 +804,4 @@ public class ShieldThrow : MonoBehaviour
         restTimer = 0f;
     }
 
-    static Transform FindDeep(Transform root, string name)
-    {
-        if (root == null) return null;
-        if (root.name == name) return root;
-        for (int i = 0; i < root.childCount; i++)
-        {
-            var r = FindDeep(root.GetChild(i), name);
-            if (r != null) return r;
-        }
-        return null;
-    }
 }
