@@ -16,7 +16,7 @@ public class HitReaction : MonoBehaviour
     public Animator animator;
 
     [Header("受击摆动")]
-    public float impulseStrength = 200f;    // 满档受击冲量（deg/s）：命中冲量达到 refImpulse 时晃这么狠
+    public float impulseStrength = 200f;    // 满档倾倒角速度（deg/s）：命中冲量 J 达到 refImpulse 时晃这么狠
     [Range(0f, 45f)] public float maxAngle = 14f;   // 最大倾倒角（强击在此饱和，防穿模）
 
     [Header("按命中冲量缩放（物理驱动）")]
@@ -68,6 +68,8 @@ public class HitReaction : MonoBehaviour
         float scale = refImpulse > 0.0001f
             ? Mathf.Lerp(minScale, 1f, Mathf.Clamp01(horizontal / refImpulse))
             : 1f;                                           // refImpulse=0 时退化为固定幅度（旧行为）
+        // 冲量式注入：只在受击这一帧改一次角速度，之后不再干预、由弹簧自己振荡归零
+        // 用 += 而非 = ：连击的角速度会累积，累积出来的峰值由 maxAngle 饱和兜底。
         angVel += impulseStrength * scale;
         if (debugLog) Debug.Log("[HitReaction] 受击 dir=" + dir.ToString("F2") + " impulse=" + impulse.ToString("F1") + "N·s scale=" + scale.ToString("F2"));
     }
