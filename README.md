@@ -53,6 +53,8 @@ Assets/Scripts/
 │   ├── Health.cs              统一伤害入口 + 事件广播（含格挡拦截询问）
 │   ├── HitReaction.cs         受击上半身摆动（欠阻尼弹簧）
 │   ├── BladeCollider.cs       剑尖物理碰撞体（kinematic 胶囊 + CCD）
+│   ├── SweepProbe.cs          帧间胶囊/球体扫掠检测（初始重叠 + 帧间扫掠双检测，帧率无关）
+│   ├── MeleeHitResolver.cs    近战命中三分支结算（Prop/石头/血量，HashSet 按刀去重，挥砍/爪击/盾共用）
 │   ├── SwordTrail.cs          剑尖 ribbon 拖尾
 │   ├── Ragdoll.cs             程序化布娃娃 + 按命中部位分配冲量
 │   ├── PropImpulse.cs         统一冲量结算（击飞箱子）
@@ -69,6 +71,7 @@ Assets/Scripts/
 ├── Camera/
 │   └── ThirdPersonCamera.cs   半球面轨道相机（避障/瞄准拉近/越肩/冲击拉近）
 └── Utility/
+    ├── TransformUtil.cs       Transform 层级查找工具（递归按名深搜，精确/包含匹配）
     └── ColliderSafeClosestPoint.cs  ClosestPoint 安全包装（Terrain/非凸网格退化处理）
 ```
 
