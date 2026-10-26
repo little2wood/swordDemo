@@ -13,8 +13,8 @@ using UnityEngine;
 public class CapeCloth : MonoBehaviour
 {
     [Header("网格尺寸")]
-    public int cols = 7;            // 列（宽向粒子数）
-    public int rows = 10;           // 行（长向粒子数）
+    public int cols = 9;            // 列（宽向粒子数）
+    public int rows = 13;           // 行（长向粒子数）
     public float length = 0.7f;     // 垂落长度（m）
 
     

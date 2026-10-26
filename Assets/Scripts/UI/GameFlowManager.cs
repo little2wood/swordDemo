@@ -17,7 +17,7 @@ public class GameFlowManager : MonoBehaviour
 {
     [Header("流程")]
     [Tooltip("通关需要击杀的敌人总数")]
-    public int totalEnemies = 10;
+    public int totalEnemies = 5;
     [Tooltip("一个敌人被杀死后，隔多久在画面外刷出下一个（给死亡表现留点时间）")]
     public float respawnDelay = 1.5f;
     [Tooltip("杀满通关 / 主角阵亡后，隔多久才弹出结算界面（让死亡表现播完）")]

@@ -2,7 +2,7 @@ using UnityEngine;
 
 /// <summary>
 /// Torned 破损披风代理驱动（套法二：蒙在 CapeCloth 粒子上"跟着动"）：
-/// CapeCloth 继续跑 7×10 粒子 Verlet/PBD 物理，本组件把 Torned 网格每个顶点
+/// CapeCloth 继续跑 9×13 粒子 Verlet/PBD 物理，本组件把 Torned 网格每个顶点
 /// 在初始姿态下绑定到最近的 bindCount 个粒子（反距离权重），运行时做位移插值：
 ///   顶点新位置 = 顶点初始位置经当前 spine_02 变换 + Σ 权重 × 粒子位移
 /// 粒子位移 = 粒子当前位置 - 粒子静止位置经当前骨骼变换（纯形变量）：
