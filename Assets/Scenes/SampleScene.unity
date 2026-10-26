@@ -14181,6 +14181,7 @@ MonoBehaviour:
   turnSpeed: 360
   handL: {fileID: 0}
   handR: {fileID: 0}
+  attackHand: 0
   clawRadius: 0.08
   debugSweep: 0
   propLayer:
@@ -14189,7 +14190,7 @@ MonoBehaviour:
   clawMass: 2.5
   maxClawSpeed: 8
   facingOffset: 0
-  parryWindowStart: 0.22
+  parryWindowStart: 0.27
   parryWindowEnd: 0.45
 --- !u!136 &469687790
 CapsuleCollider:
