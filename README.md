@@ -80,7 +80,7 @@ Assets/Scripts/
 | 帧同步 | 输入缓冲（Update 置位 → FixedUpdate 消费），点击不会因渲染帧与物理步不同步而丢失 |
 | 坡地贴合 | `RaycastNonAlloc` 探地 + 把竖直速度钉成"期望速度在坡面上的投影分量"，四方向贴坡不走抛物线 |
 | 命中判定 | 动画窗口 + 帧间胶囊/球体扫掠（与帧率无关），`HashSet` 按刀去重 |
-| 防穿透 | 高速剑尖用独立碰撞体 + `ContinuousDynamic` CCD + `MovePosition` 推进；召回盾用路径胶囊扫掠兜底物理隧穿 |
+| 防穿透 | 高速剑尖用独立碰撞体 + `Continuous` CCD + `MovePosition` 推进，飞行盾刚体用 `ContinuousDynamic`；召回盾用路径胶囊扫掠兜底物理隧穿 |
 | 命中反馈 | 统一冲量标尺 `J = 武器速度 × 有效质量`（N·s），驱动受击摆动/布娃娃/箱子击飞三套表现 |
 | 骨骼弹簧 | 欠阻尼角弹簧（`acc = −k·θ − c·ω`）驱动受击摆动：挥砍/爪击/盾砸统一走 `HitReaction` 上半身摆动，在 Animator 姿态后叠加 |
 | 布娃娃 | 脚本运行时生成骨骼刚体（等价 Ragdoll Wizard），死亡唤醒 + 按命中部位分配冲量（含距离衰减） |

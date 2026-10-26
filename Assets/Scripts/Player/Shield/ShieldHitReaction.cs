@@ -8,7 +8,8 @@ using UnityEngine;
 /// 本组件是"砸中哪根骨头、哪根骨头按受力转动"：用接触点相对骨骼的力臂 × 命中冲量
 /// 算出扭矩，注入该骨骼的独立弹簧，再沿子链按权重衰减传导（上层转了，下层惯性甩出）。
 ///
-/// 只在 Flying 中的盾发生碰撞时被调用（见 ShieldThrow.OnCollisionEnter）。
+/// 预留未接线：因效果不明显 ShieldThrow 当前并未调用本组件（ReactAt 无调用方，盾砸实际走 HitReaction 统一摆动）；
+/// 若要启用，需在盾 Flying 状态的碰撞回调（如 ShieldThrow.OnCollisionEnter）里调用 ReactAt。
 /// 存活期间布娃娃部件是 kinematic，不能靠施加力，改为 LateUpdate 叠加骨骼旋转：
 /// Animator 写完姿态之后、渲染之前叠加，下一帧 Animator 自动覆盖，无需恢复逻辑。
 /// 对手死亡后骨骼交给 Ragdoll 物理，本组件立即停手（也放开 pelvis 约束 —— 砸中骨盆照常摆）。

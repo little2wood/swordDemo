@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// 角色控制器：物理驱动移动（WASD 按固定屏幕方向）+ 朝向平滑对齐移动方向 + 攻击仅在站立时可起手/续击。
+/// 角色控制器：物理驱动移动（WASD 按相机水平朝向解释）+ 朝向平滑对齐移动方向 + 攻击仅在站立时可起手/续击。
 /// 攻击链全程（出刀/收势/连击）锁定移动与朝向，连击输入不受影响。
 /// 攻击点击经 PlayerInput 的缓冲传递到 FixedUpdate 消费，避免渲染帧与物理步不同步导致丢点击。
-/// 相机为固定偏移跟随（不旋转），动画只负责表演，位移完全由 Rigidbody 决定。
+/// 相机为鼠标驱动轨道（ThirdPersonCamera，可环绕/俯仰），动画只负责表演，位移完全由 Rigidbody 决定。
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 [RequireComponent(typeof(Animator))]
@@ -285,7 +285,7 @@ public class PlayerController : MonoBehaviour
         Vector2 mv = input.MoveInput;
         bool hasMove = mv.sqrMagnitude > 0.01f;
 
-        // ---- 移动方向：相机系 WASD（相机不旋转，即固定的屏幕方向） ----
+        // ---- 移动方向：相机系 WASD（随 ThirdPersonCamera 轨道实时旋转，取相机水平朝向） ----
         Vector3 dir = Vector3.zero;
         if (hasMove)
         {
