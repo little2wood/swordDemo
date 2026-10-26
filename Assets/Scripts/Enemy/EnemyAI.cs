@@ -38,7 +38,7 @@ public class EnemyAI : MonoBehaviour
     public float facingOffset = 0f;     // 模型正面与 transform.forward 的夹角；若角色倒着走改成 180
 
     [Header("弹反")]
-    [Tooltip("可弹反窗口的起点（动画进度）：前摇（抬手）结束、爪子开始挥出的那一瞬。\nZombie_Scratch 实测：手掌速度峰值在 0.30~0.34，0.26 之前是抬手")]
+    [Tooltip("可弹反窗口的起点（动画进度）：前摇（抬手）结束、爪子开始挥出的那一瞬。\n同一条界线也用作\"前摇不结算命中\"的分界 —— 抬手阶段爪子压到主角也不伤人。\nZombie_Scratch 实测：手掌速度峰值在 0.30~0.34，0.26 之前是抬手")]
     [Range(0f, 1f)] public float parryWindowStart = 0.22f;
     [Tooltip("可弹反窗口的终点（动画进度）：刻意放宽到挥击段之后 —— 真正的终点是\"爪子打到主角\"那一瞬，\n由 resolver.HasHitTarget 在命中时自动切断（见 IsInParryWindow），命中之后按防御一律不算弹反。\n实测 1.2m 距离下命中在第 18.5 帧(0.343)，所以有效窗口 ≈ 第 12~18.5 帧")]
     [Range(0f, 1f)] public float parryWindowEnd = 0.45f;
@@ -78,6 +78,8 @@ public class EnemyAI : MonoBehaviour
     /// <summary>
     /// 是否处于可弹反的"攻击期间"：正在播攻击动画，且落在 [parryWindowStart, parryWindowEnd] 这段
     /// 真正的挥击区间里 —— 前摇（抬手）和后摇（收势）都不算。
+    /// 抬手阶段 UpdateSweep 不结算命中（爪子还没挥出来，压到人不伤人，见 PastWindup），
+    /// 所以 HasHitTarget 最早也要到窗口开启之后才可能置位 —— 窗口不会一开就被命中关掉。
     /// 只有这段时间里玩家按下防御才判定弹反 —— 手掌扫掠之外的伤害源不参与。
     /// </summary>
     public bool IsInParryWindow()
@@ -200,19 +202,34 @@ public class EnemyAI : MonoBehaviour
         clawPolicy.onStone = null;            // 爪子打石头无特殊反馈
         clawPolicy.onFlesh = null;
 
-        if (handL != null) ProbeHand(probeL, handL); else probeL.Reset();
-        if (handR != null) ProbeHand(probeR, handR); else probeR.Reset();
+        // 抬手（前摇）阶段不结算：爪子还没挥出来，压到人不该伤人，
+        // 也更不该让"已命中"标记抢在弹反窗口开启之前生效（那一击就再也弹不了了，见 IsInParryWindow）
+        bool settle = PastWindup();
+        if (handL != null) ProbeHand(probeL, handL, settle); else probeL.Reset();
+        if (handR != null) ProbeHand(probeR, handR, settle); else probeR.Reset();
     }
 
-    /// 单只手掌的带宽度扫掠检测（球体近似爪击体积）：命中玩家方 Health 结算一次，命中 Prop 层箱子施加冲量
-    void ProbeHand(SweepProbe probe, Transform hand)
+    /// 挥击是否已开始（动画进度 ≥ parryWindowStart，与弹反窗口同一条界线）：之前是抬手，爪子还没挥出来
+    bool PastWindup()
+    {
+        var st = anim.GetCurrentAnimatorStateInfo(0);
+        return st.normalizedTime >= parryWindowStart;
+    }
+
+    /// 单只手掌的带宽度扫掠检测（球体近似爪击体积）：命中玩家方 Health 结算一次，命中 Prop 层箱子施加冲量。
+    /// settle=false（抬手阶段）时只推进扫掠采样、不结算 ——
+    /// 采样必须照常推进，否则进入挥击段时扫掠起点会跳变，前摇到挥击之间会连出一条超长扫掠线，命中范围凭空变大。
+    void ProbeHand(SweepProbe probe, Transform hand, bool settle)
     {
         Vector3 now = hand.position;
         probe.Probe(now, now, clawRadius, Vector3.zero, sweepHits);   // 球体 = 胶囊两端重合
-        for (int i = 0; i < sweepHits.Count; i++)
+        if (settle)
         {
-            var hit = sweepHits[i];
-            resolver.Resolve(hit.collider, hit.sweepDir, hit.velocity, hit.point, clawPolicy);
+            for (int i = 0; i < sweepHits.Count; i++)
+            {
+                var hit = sweepHits[i];
+                resolver.Resolve(hit.collider, hit.sweepDir, hit.velocity, hit.point, clawPolicy);
+            }
         }
 
         if (debugSweep && probe.ProbedLast)
